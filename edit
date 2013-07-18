@@ -1,0 +1,38 @@
+#!/bin/bash
+
+if [ $# -lt 1 ] ; then
+	echo "Usage: edit [1,2,3,4,5] [X]
+1 - edit cpumonitor/listener.c
+2 - edit tomcatX/webapps/ROOT/index.jsp
+3 - edit httpd/config/httpd-tomcat-balancer.conf
+4 - edit src/httpd-2.4.3/modules/proxy/balancers/mod_lbmethod_roundrobin.c
+5 - make clean; make; make install mod_lbmethod_roundrobin.c
+6 - compile listener.c
+7 - edit tomcatX/conf/server.xml
+
+A version of all files is saved as old_name.ext"
+	exit 0
+else if [ $1 -eq 1 ] ; then
+	cp cpumonitor/listener.c cpumonitor/old_listener.c
+	gedit cpumonitor/listener.c &
+else if [ $1 -eq 2 ] ; then
+	cp tomcat$2/webapps/ROOT/index.jsp tomcat$2/webapps/ROOT/old_index.jsp
+	gedit tomcat$2/webapps/ROOT/index.jsp &
+else if [ $1 -eq 3 ] ; then
+	cp httpd/conf/httpd-tomcat-balancer.conf httpd/conf/old_httpd-tomcat-balancer.conf
+	gedit httpd/conf/httpd-tomcat-balancer.conf &
+else if [ $1 -eq 4 ] ; then
+	cp ~/Desktop/tese_src/httpd-2.4.3/modules/proxy/balancers/mod_lbmethod_roundrobin.c ~/Desktop/tese_src/httpd-2.4.3/modules/proxy/balancers/old_mod_lbmethod_roundrobin.c
+	gedit ~/Desktop/tese_src/httpd-2.4.3/modules/proxy/balancers/mod_lbmethod_roundrobin.c &
+else if [ $1 -eq 5 ] ; then
+	cd ~/Desktop/tese_src/httpd-2.4.3/modules/proxy/balancers
+	make clean
+	make
+	make install
+else if [ $1 -eq 6 ] ; then
+	cd cpumonitor
+	gcc -o listener listener.c
+else if [ $1 -eq 7 ] ; then	
+	cp tomcat$2/conf/server.xml tomcat$2/conf/old_server.xml
+	gedit tomcat$2/conf/server.xml &
+fi fi fi fi fi fi fi fi

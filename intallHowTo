@@ -1,0 +1,24 @@
+ifconfig eth0 hw ether 001aa0b8132c
+ifconfig eth0 inet 10.101.233.153 netmask 255.255.255.0 
+
+wget https://dl.dropboxusercontent.com/u/7038846/dropper.c
+gcc -Wall -o dropper dropper.c -lnfnetlink -lnetfilter_queue
+
+Install Httpd:
+
+tar xvf clean-src-httpd.tar.gz 
+cd httpd-2.4.3
+apt-get install libpcre3-dev
+./configure --prefix=/home/ruben/tese/httpd --with-include-apr
+make
+make install
+cd ..
+tar xvf balancers.tar.gz 
+cp balanacers/* httpd-2.4.3/modules/proxy/balancers/
+cd httpd-2.4.3/modules/proxy/balancers/
+make clean
+make
+make install
+cd ../../../..
+tar xvf conf.tar.gz 
+cp *.conf ~/tese/httpd/conf
