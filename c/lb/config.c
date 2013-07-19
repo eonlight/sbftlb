@@ -1,6 +1,8 @@
 #include <math.h>
 #include "config.h"
 
+/* iptables -vxL -t raw */
+
 void addIptablesRules(){
 	/* clear iptables */
 	if (fork() == 0) {
@@ -8,15 +10,7 @@ void addIptablesRules(){
 		execvp("iptables", args);
 	}
 	
-	/* add arp rule for front_end ff:ff:ff:ff:ff:ff */
-	/*if(fork() == 0){
-		char *args[] = {"arp", "-s", config.frontEnd, "ff:ff:ff:ff:ff:ff", NULL};
-		execvp("arp", args);
-	}*/
-	
 	sleep(1);
-	
-	/* iptables -vxL -t raw */
 
 	/* add rules */
 	int plen = floor(log10(abs(config.frontPort))) + 1;
@@ -27,8 +21,7 @@ void addIptablesRules(){
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
 						"-p", "tcp", "--dport", port, "-d", 
-						config.frontEnd, "-j", "NFQUEUE", 
-						"--queue-num", "1", NULL};
+						config.frontEnd, "-j", "DROP", NULL};
 		execvp("iptables", args);
 	}
 	
@@ -42,8 +35,7 @@ void addIptablesRules(){
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
 						"-p", "udp", "--dport", hport, "-d", 
-						config.frontEnd, "-j", "NFQUEUE", 
-						"--queue-num", "1", NULL};
+						config.frontEnd, "-j", "DROP", NULL};
 		execvp("iptables", args);
 	}
 }

@@ -56,7 +56,7 @@ void checkFilter(char *buf){
 
 	if(bloom->packets > 0){
 
-			printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
+		//	printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
 
 		//state.susp[lb]++;
 		//state.asusp[lb]++;

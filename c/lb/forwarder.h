@@ -4,8 +4,6 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <linux/types.h>
-#include <linux/netfilter.h> /* for NF_ACCEPT */
-#include <libnetfilter_queue/libnetfilter_queue.h>
 
 #include <netinet/ip.h>	/* Provides declarations for ip header */
 #include <netinet/tcp.h>	/* Provides declarations for tcp header */ 
@@ -17,8 +15,14 @@
 #include <time.h> /* time(0) */
 
 #define UDP_PROTO 17
+#define SIZE_ETHERNET 14
+#define SNAP_LEN 1512
+
+#include <pcap.h>
 
 #include "bloom.c"
+
+
 
 char **bags;
 int bs = 0;
@@ -56,8 +60,10 @@ pthread_mutex_t lock;
 int end = 0;
 
 /* NFqueue structs */
-struct nfq_handle *h = NULL;
-struct nfq_q_handle *qh = NULL;
+//struct nfq_handle *h = NULL;
+//struct nfq_q_handle *qh = NULL;
+pcap_t * handle = NULL;	
+struct bpf_program fp; //compiled filter
 
 /* Aux struct to resend */
 struct sockaddr_in to;
@@ -65,7 +71,7 @@ struct sockaddr_in to;
 State state;
 
 int main(int argc, char **argv);
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
+int cb(unsigned char * buffer, int recv_len);
 
 void addNewLB(int id, char *ip);
 void addNewServer(int id, char *ip);

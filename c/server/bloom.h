@@ -1,18 +1,17 @@
 #ifndef __BLOOM_H__
 #define __BLOOM_H__
 
-#include<stdlib.h>
-
+#include <stdlib.h>
 
 typedef struct {
 	int entries;
-  	double error;
-  	int bits;
-  	int bytes;
-  	int hashes;
+	double error;
+	int bits;
+	int bytes;
+	int hashes;
 	double bpe;
-  	unsigned char * bf;
-  	int ready;
+	unsigned char * bf;
+	int ready;
 } Bloom;
 
 Bloom *createBloom(int entries, double error);

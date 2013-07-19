@@ -97,15 +97,15 @@ void addNewLB(int id, char *ip){
 	state.numLB++;
 }
 
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data) {
+int cb(unsigned char * buffer, int recv_len) {
 
-	unsigned char *buffer;
+	//unsigned char *buffer;
 	// buffer[recv_len] == '\0'
-	int recv_len = nfq_get_payload(nfa, (char **) &buffer);
+	/*int recv_len = nfq_get_payload(nfa, (char **) &buffer);
 
 	// Get package queue id
 	struct nfqnl_msg_packet_hdr *ph = nfq_get_msg_packet_hdr(nfa);
-	int id = ntohl(ph->packet_id);
+	int id = ntohl(ph->packet_id);*/
 
 	// create struct for ip header
 	struct iphdr *iph = (struct iphdr*) buffer;
@@ -185,8 +185,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 			}
 			
 		}
-    	
-		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    	return 0;
+		//return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 	}
 	
 	// create struct for tcp header
@@ -228,7 +228,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 		sendPacket(iph, tcph, buffer, config.id);
 
 	// Default: drop packets
-	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+	//return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+	return 1;
 }
 
 /*
@@ -251,66 +252,61 @@ int isWhatcher(int lb, int whatcher, int num){
 	//return (lb+1)%num <= whatcher || whatcher <= (lb+(2*fconfig.faults))%num;
 }
 
+void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
+	unsigned char * buffer = (unsigned char *)(packet + SIZE_ETHERNET);
+	cb(buffer, header->caplen);
+}
+
 int main(int argc, char **argv){
 
 	printf("starting...\n");
 
 	if(argc < 2){
 		printf("Usage: %s [config file] {1}\n", argv[0]);
-		die("no config file");
+		die("forwarder - main: no config file");
 	}
 	
 	// init mutex 
 	if (pthread_mutex_init(&lock, NULL) != 0)
-        die("mutex init failed");
+        die("forwarder - main: mutex init failed");
 
 	signal(SIGINT, terminate);
 	signal(SIGTERM, terminate);
 	signal(SIGKILL, terminate);
 
+	//Configs
 	readConfig(argv[1]);
-	
 	addIptablesRules();
 	
-	printf("my Watchers: \n");
-	int i;
-	for(i = 0; i < state.numLB; i++)
-		if(isWhatcher(config.id, i, state.numLB))
-			printf("%d ", i);
-	printf("\n");
-	
-	//if(argc > 2 && argv[2][0] == '1') {
-	//	printf("recovering...\n");
+	// Send Hello to all LBs	
+	printf("sending hello protocol...\n");
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-		int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	struct sockaddr_in all;
+	all.sin_family = AF_INET;
+	all.sin_addr.s_addr = inet_addr(config.frontEnd);
+	all.sin_port = htons(config.helloPort);
 
-		struct sockaddr_in all;
-		all.sin_family = AF_INET;
-		all.sin_addr.s_addr = inet_addr(config.frontEnd);
-		all.sin_port = htons(config.helloPort);
+	int type = 1;
+	char hello[sizeof(int)*2+1];
+	memcpy(hello, &type, sizeof(int));
+	memcpy(hello+sizeof(int), &config.id, sizeof(int));
+	hello[sizeof(int)*2] = '\0';
 
-		int type = 1;
-		char hello[sizeof(int)*2+1];
-		memcpy(hello, &type, sizeof(int));
-		memcpy(hello+sizeof(int), &config.id, sizeof(int));
-		hello[sizeof(int)*2] = '\0';
+	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
-		sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
+	close(rs);
+	// END
 
-		close(rs);
-	//}
-	
+	printf("creating threads...\n");
 	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
-		die("unable to create thread");
+		die("forwarder - main: unable to create thread");
 	
-	int fd, rv;
-	
-	char buf[4096] __attribute__ ((aligned));
 
-	printf("Setting up sockets...\n");
 	to.sin_family = AF_INET;
 
+	printf("setting up sockets...\n");
 	// create a socket
 	if ((s = socket(AF_INET, SOCK_RAW, IPPROTO_TCP)) == -1)
 		die("socket");
@@ -319,60 +315,46 @@ int main(int argc, char **argv){
 	if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) == -1)
         	die("setsockopt IP");
 
-	printf("Setting up nfqueue...\n");
-	// opening library handle
-	h = nfq_open();
-	if(!h)
-		die("error during nfq_open()");
+	// TODO: change to CONFIG
+	char *dev = "eth1";
+	char errbuf[PCAP_ERRBUF_SIZE];
 
-	// unbinding existing nf_queue handler for AF_INET (if any)
-	if(nfq_unbind_pf(h, AF_INET) < 0)
-		die("error during nfq_unbind_pf()");
+	// TODO: change to configs
+	char filter_exp[] = "tcp port 5555 and dst 192.168.7.100 or udp port 33000";
 
-	// binding nfnetlink_queue as nf_queue handler for AF_INET
-	if(nfq_bind_pf(h, AF_INET) < 0)
-		die("error during nfq_bind_pf()");
-		
-	// binding this socket to queue '1'
-	qh = nfq_create_queue(h,  1, &cb, NULL);
-	if(!qh)
-		die("error during nfq_create_queue()");
+	bpf_u_int32 mask; //subnet mask
+	bpf_u_int32 net; //ip
+	int num_packets = -1; // until error
 
-	// setting copy_packet mode
-	if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0)
-		die("can't set packet_copy mode");
-
-	fd = nfq_fd(h);
-
-	printf("All set!\n");
-	while(end != 1){
-		rv = recv(fd, buf, sizeof(buf), 0);
-		if(rv >= 0)
-			nfq_handle_packet(h, buf, rv);
+	// get network number and mask associated with capture device
+	printf("init pcap protocol...\n");
+	if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
+		fprintf(stderr, "Couldn't get netmask for device %s: %s\n", dev, errbuf);
+		net = 0;
+		mask = 0;
 	}
-	
-	printf("Cleaning...\n");
-	// unbinding from queue 1
-	nfq_destroy_queue(qh);
-	
-	qh = NULL;
-	
-#ifdef INSANE
-	/* normally, applications SHOULD NOT issue this command, since
-	 * it detaches other programs/sockets from AF_INET, too ! */
-	// unbinding from AF_INET
-	nfq_unbind_pf(h, AF_INET);
-#endif
-	// closing library handle
-	nfq_close(h);
-	
-	h = NULL;
-	
-	// closing socket
-	close(s);
-	s = -1;
-	
-	die("Done!\n");
+
+	handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
+	if (handle == NULL)
+		die("forwarder - main: fail to open pcap");
+
+	// make sure we're capturing on an Ethernet device
+	if (pcap_datalink(handle) != DLT_EN10MB)
+		die("forwarder - main: fail to set interface");
+
+	//compile the filter expression
+	if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1)
+		die("forwarder - main: couldn't parse filter");
+
+	//apply the compiled filter
+	if (pcap_setfilter(handle, &fp) == -1)
+		die("forwarder - main: couldn't install filter");
+
+	printf("starting to capture...\n");
+	//now we can set our callback function
+	pcap_loop(handle, num_packets, got_packet, NULL);
+
+	die("forwarder - main: Done!");
 	return 0;
 }
 
@@ -478,15 +460,7 @@ void die(char *error){
 	pthread_mutex_destroy(&lock);
 
 	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
-
-/*
-104
-not 104
-1000
-1000
-560
-352
-*/
+	/*
 	int k = 0;
 	for(k = 0; k < bs; k++){
 		checkFilter(bags[k]);
@@ -494,7 +468,7 @@ not 104
 	}
 	free(bags);
 
-	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
+	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);*/
 	
 	if(newts != -1)
 		close(newts);
@@ -514,14 +488,13 @@ not 104
 	cleanConfigs();
 	clearConfigs();
 
-	if(qh != NULL)
-		nfq_destroy_queue(qh);
-	qh = NULL;
-	
-	if(h != NULL)
-		nfq_close(h);
-	h = NULL;
-	
+	// pcap
+	pcap_freecode(&fp);
+
+	if(handle != NULL)
+		pcap_close(handle);
+	handle = NULL;
+
 	exit(1);
 }
 
