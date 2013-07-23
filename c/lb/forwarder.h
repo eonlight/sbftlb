@@ -20,7 +20,6 @@
 
 #include "bloom.c"
 
-char **bags;
 int bs = 0;
 
 typedef struct {

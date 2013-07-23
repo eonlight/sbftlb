@@ -7,9 +7,12 @@ sshpass -p fabiim scp lb/*.h s3.quinta:/home/ruben/SBFTLB/
 echo "Coping lbs to s9"
 sshpass -p fabiim scp lb/*.c s9.quinta:/home/ruben/SBFTLB/
 sshpass -p fabiim scp lb/*.h s9.quinta:/home/ruben/SBFTLB/
-echo "Coping lbs to s5"
-sshpass -p fabiim scp lb/*.c s5.quinta:/home/ruben/SBFTLB/
-sshpass -p fabiim scp lb/*.h s5.quinta:/home/ruben/SBFTLB/
+#echo "Coping lbs to s5"
+#sshpass -p fabiim scp lb/*.c s5.quinta:/home/ruben/SBFTLB/
+#sshpass -p fabiim scp lb/*.h s5.quinta:/home/ruben/SBFTLB/
+echo "Coping lbs to s7"
+sshpass -p quinta scp lb/*.c s7.quinta:/home/ruben/SBFTLB/
+sshpass -p quinta scp lb/*.h s7.quinta:/home/ruben/SBFTLB/
 fi
 
 if [ $1 -gt 1 ]; then

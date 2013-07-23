@@ -111,7 +111,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	struct iphdr *iph = (struct iphdr*) buffer;
 	unsigned short iphdrlen = iph->ihl*4;
 	
-	if(iph->protocol == UDP_PROTO){
+	/*if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
@@ -187,7 +187,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 		}
     	
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-	}
+	}*/
 	
 	// create struct for tcp header
 	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
@@ -205,8 +205,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	// Select wish load balancer will responde
 	int lb = selectLB(host, sport, state.numLB);
 
-	while(isFaulty(lb)) 
-		lb = (lb+1)%state.numLB;
+	//while(isFaulty(lb)) 
+		//lb = (lb+1)%state.numLB;
 
 	// Alterar para algoritmo de escolha de server (eg. rr)
 	int server = getDestination(host, sport, state.numServers);
@@ -218,15 +218,17 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	iph->daddr = inet_addr(state.servers[server].ip);
 
 	// Compute TCP checksum
-	compute_tcp_checksum(iph, (unsigned short*)tcph);
-	compute_ip_checksum(iph);
+	//compute_tcp_checksum(iph, (unsigned short*)tcph);
+	//compute_ip_checksum(iph);
 	
-	if(amWhatcher(lb, state.numLB))
-		addToList(lb, recv_len, buffer, server);
+	//if(amWhatcher(lb, state.numLB))
+		//addToList(lb, recv_len, buffer, server);
 	
 	if(lb == config.id)
 		sendPacket(iph, tcph, buffer, config.id);
 
+	count[lb]++;
+	counter++;
 	// Default: drop packets
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
@@ -272,15 +274,7 @@ int main(int argc, char **argv){
 	
 	addIptablesRules();
 	
-	printf("my Watchers: \n");
-	int i;
-	for(i = 0; i < state.numLB; i++)
-		if(isWhatcher(config.id, i, state.numLB))
-			printf("%d ", i);
-	printf("\n");
-	
-	//if(argc > 2 && argv[2][0] == '1') {
-	//	printf("recovering...\n");
+
 
 		int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -298,12 +292,11 @@ int main(int argc, char **argv){
 		sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
 		close(rs);
-	//}
 	
-	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
+	/*int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
 		die("unable to create thread");
-	
+	*/
 	int fd, rv;
 	
 	char buf[4096] __attribute__ ((aligned));
@@ -369,7 +362,8 @@ int main(int argc, char **argv){
 	h = NULL;
 	
 	// closing socket
-	close(s);
+	if(s != -1)
+		close(s);
 	s = -1;
 	
 	die("Done!\n");
@@ -456,14 +450,12 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	
 	if ((err = sendto(s, newb, ntohs(iph->tot_len),0,(struct sockaddr *)&to, sizeof(to))) < 0)
 		die("forwarder - sendPacekt: send");
-	
-	count[config.id]++;
 
 	free(newb);	
 }
 
 void terminate(int sig){
-	pthread_kill(thread, sig);
+	//pthread_kill(thread, sig);
 	die(strsignal(sig));
 }
 
@@ -474,28 +466,11 @@ void die(char *error){
 	perror(error);
 
 	
-	pthread_join(thread, NULL);
+	//pthread_join(thread, NULL);
 	pthread_mutex_destroy(&lock);
 
-	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
+	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
 
-/*
-104
-not 104
-1000
-1000
-560
-352
-*/
-	int k = 0;
-	for(k = 0; k < bs; k++){
-		checkFilter(bags[k]);
-		free(bags[k]);
-	}
-	free(bags);
-
-	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
-	
 	if(newts != -1)
 		close(newts);
 	newts = -1;
