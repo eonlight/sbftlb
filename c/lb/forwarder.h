@@ -46,7 +46,7 @@ typedef struct {
 } State;
 
 /* socket */
-int s, err, on = 1;
+int list, s, err, on = 1;
 int newts = -1;
 
 
@@ -55,17 +55,13 @@ pthread_t thread;
 pthread_mutex_t lock;
 int end = 0;
 
-/* NFqueue structs */
-struct nfq_handle *h = NULL;
-struct nfq_q_handle *qh = NULL;
-
 /* Aux struct to resend */
 struct sockaddr_in to;
 
 State state;
 
 int main(int argc, char **argv);
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
+void cb(unsigned char * buffer, int recv_len);
 
 void addNewLB(int id, char *ip);
 void addNewServer(int id, char *ip);

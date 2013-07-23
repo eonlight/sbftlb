@@ -25,14 +25,14 @@ void addIptablesRules(){
 	port[plen] = '\0';
 
 	if (fork() == 0) {
-		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
-						"-p", "tcp", "--dport", port, "-d", 
-						config.frontEnd, "-j", "NFQUEUE", 
-						"--queue-num", "1", NULL};
+		char *args[] = {"iptables", "-A", "OUTPUT", 
+						"-p", "tcp", "--sport", port,
+						"--tcp-flags", "RST", "RST",
+						"-j", "DROP", NULL};
 		execvp("iptables", args);
 	}
 	
-	sleep(1);
+	/*sleep(1);
 	
 	plen = floor(log10(abs(config.helloPort))) + 1;
 	char hport[plen+1];
@@ -45,7 +45,7 @@ void addIptablesRules(){
 						config.frontEnd, "-j", "NFQUEUE", 
 						"--queue-num", "1", NULL};
 		execvp("iptables", args);
-	}
+	}*/
 }
 
 /* resets the configs */

@@ -97,21 +97,12 @@ void addNewLB(int id, char *ip){
 	state.numLB++;
 }
 
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data) {
-
-	unsigned char *buffer;
-	// buffer[recv_len] == '\0'
-	int recv_len = nfq_get_payload(nfa, (char **) &buffer);
-
-	// Get package queue id
-	struct nfqnl_msg_packet_hdr *ph = nfq_get_msg_packet_hdr(nfa);
-	int id = ntohl(ph->packet_id);
-
+void cb(unsigned char * buffer, int recv_len){
 	// create struct for ip header
 	struct iphdr *iph = (struct iphdr*) buffer;
 	unsigned short iphdrlen = iph->ihl*4;
 	
-	if(iph->protocol == UDP_PROTO){
+	/*if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
@@ -186,49 +177,60 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 			
 		}
     	
-		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-	}
+		return;
+	}*/
 	
 	// create struct for tcp header
 	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
-
-	struct sockaddr_in source;	
+	struct sockaddr_in source, dest;	
 	memset(&source, 0, sizeof(source));
+	memset(&source, 0, sizeof(dest));
 	source.sin_addr.s_addr = iph->saddr;
+	dest.sin_addr.s_addr = iph->daddr;
 
 	// Get source
 	char *host = inet_ntoa(source.sin_addr);
+	char *hdest = inet_ntoa(dest.sin_addr);
 
 	// Get sport
 	int sport = ntohs(tcph->source);
 
-	// Select wish load balancer will responde
-	int lb = selectLB(host, sport, state.numLB);
+	int dport = ntohs(tcph->dest);
 
-	while(isFaulty(lb)) 
-		lb = (lb+1)%state.numLB;
+	if(dport == 5555 && strcmp(hdest, config.frontEnd) == 0){
+		counter++;
 
-	// Alterar para algoritmo de escolha de server (eg. rr)
-	int server = getDestination(host, sport, state.numServers);
-	
-	// Change dport
-	tcph->dest = htons(config.endPort);
-			
-	// Change dest
-	iph->daddr = inet_addr(state.servers[server].ip);
+		//printf("%s:%d\n", host, dport);
 
-	// Compute TCP checksum
-	compute_tcp_checksum(iph, (unsigned short*)tcph);
-	compute_ip_checksum(iph);
-	
-	if(amWhatcher(lb, state.numLB))
-		addToList(lb, recv_len, buffer, server);
-	
-	if(lb == config.id)
-		sendPacket(iph, tcph, buffer, config.id);
+		// Select wish load balancer will responde
+		int lb = selectLB(host, sport, state.numLB);
 
+		//while(isFaulty(lb)) 
+			//lb = (lb+1)%state.numLB;
+
+		// Alterar para algoritmo de escolha de server (eg. rr)
+		int server = getDestination(host, sport, state.numServers);
+		
+		// Change dport
+		tcph->dest = htons(config.endPort);
+				
+		// Change dest
+		iph->daddr = inet_addr(state.servers[server].ip);
+
+		// Compute TCP checksum
+		//compute_tcp_checksum(iph, (unsigned short*)tcph);
+		//compute_ip_checksum(iph);
+		
+		//if(amWhatcher(lb, state.numLB))
+			//addToList(lb, recv_len, buffer, server);
+		
+		count[lb]++;
+		
+		if(lb == config.id)
+			sendPacket(iph, tcph, buffer, config.id);
+	}
 	// Default: drop packets
-	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+	return;// nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
 
 /*
@@ -268,43 +270,29 @@ int main(int argc, char **argv){
 	signal(SIGTERM, terminate);
 	signal(SIGKILL, terminate);
 
-	readConfig(argv[1]);
-	
+	readConfig(argv[1]);	
 	addIptablesRules();
+
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	struct sockaddr_in all;
+	all.sin_family = AF_INET;
+	all.sin_addr.s_addr = inet_addr(config.frontEnd);
+	all.sin_port = htons(config.helloPort);
+
+	int type = 1;
+	char hello[sizeof(int)*2+1];
+	memcpy(hello, &type, sizeof(int));
+	memcpy(hello+sizeof(int), &config.id, sizeof(int));
+	hello[sizeof(int)*2] = '\0';
+
+	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
+
+	close(rs);
 	
-	printf("my Watchers: \n");
-	int i;
-	for(i = 0; i < state.numLB; i++)
-		if(isWhatcher(config.id, i, state.numLB))
-			printf("%d ", i);
-	printf("\n");
-	
-	//if(argc > 2 && argv[2][0] == '1') {
-	//	printf("recovering...\n");
-
-		int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-		struct sockaddr_in all;
-		all.sin_family = AF_INET;
-		all.sin_addr.s_addr = inet_addr(config.frontEnd);
-		all.sin_port = htons(config.helloPort);
-
-		int type = 1;
-		char hello[sizeof(int)*2+1];
-		memcpy(hello, &type, sizeof(int));
-		memcpy(hello+sizeof(int), &config.id, sizeof(int));
-		hello[sizeof(int)*2] = '\0';
-
-		sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
-
-		close(rs);
-	//}
-	
-	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
+	/*int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
-		die("unable to create thread");
-	
-	int fd, rv;
+		die("unable to create thread");*/
 	
 	char buf[4096] __attribute__ ((aligned));
 
@@ -319,57 +307,33 @@ int main(int argc, char **argv){
 	if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) == -1)
         	die("setsockopt IP");
 
-	printf("Setting up nfqueue...\n");
-	// opening library handle
-	h = nfq_open();
-	if(!h)
-		die("error during nfq_open()");
+	//listen socket:
+	if ((list = socket(AF_INET, SOCK_RAW, IPPROTO_TCP)) == -1)
+		die("listen socket");
 
-	// unbinding existing nf_queue handler for AF_INET (if any)
-	if(nfq_unbind_pf(h, AF_INET) < 0)
-		die("error during nfq_unbind_pf()");
+	//if(setsockopt(list, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) == -1)
+        //die("setsockopt IP");
+	
+	setsockopt(list, SOL_SOCKET, SO_BINDTODEVICE, "eth1", 4);
 
-	// binding nfnetlink_queue as nf_queue handler for AF_INET
-	if(nfq_bind_pf(h, AF_INET) < 0)
-		die("error during nfq_bind_pf()");
-		
-	// binding this socket to queue '1'
-	qh = nfq_create_queue(h,  1, &cb, NULL);
-	if(!qh)
-		die("error during nfq_create_queue()");
-
-	// setting copy_packet mode
-	if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0)
-		die("can't set packet_copy mode");
-
-	fd = nfq_fd(h);
-
-	printf("All set!\n");
+	printf("sizeof: %d\n", (int) sizeof(buf));
+	
+	struct sockaddr_in si_other;
+	int recv_len = 0;
+	socklen_t slen = sizeof(si_other);
+	
 	while(end != 1){
-		rv = recv(fd, buf, sizeof(buf), 0);
-		if(rv >= 0)
-			nfq_handle_packet(h, buf, rv);
+		if ((recv_len = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *) &si_other, &slen)) == -1)
+			die("recvfrom()");
+			
+		if(recv_len >= 0){
+			cb((unsigned char *) buf, recv_len);
+		}
 	}
-	
-	printf("Cleaning...\n");
-	// unbinding from queue 1
-	nfq_destroy_queue(qh);
-	
-	qh = NULL;
-	
-#ifdef INSANE
-	/* normally, applications SHOULD NOT issue this command, since
-	 * it detaches other programs/sockets from AF_INET, too ! */
-	// unbinding from AF_INET
-	nfq_unbind_pf(h, AF_INET);
-#endif
-	// closing library handle
-	nfq_close(h);
-	
-	h = NULL;
-	
+
 	// closing socket
-	close(s);
+	if(s != -1)
+		close(s);
 	s = -1;
 	
 	die("Done!\n");
@@ -403,8 +367,6 @@ void markFaulty(int lb){
 	sendto(rs, (const char*) reset, sizeof(int)*3, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
 	close(rs);
-	
-	//printf("/sent\n");
 }
 
 int amWhatcher(int lb, int num){
@@ -430,8 +392,8 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	int tot_len = ntohs(iph->tot_len);
 	
 	// create new buffer to add ID
-	if(tot_len >= 1500)
-		tot_len -= addlen;
+	//if(tot_len >= 1500)
+		//tot_len -= addlen;
 
 	unsigned char * newb = (unsigned char *) malloc(sizeof(char)*(tot_len+addlen));
 
@@ -454,47 +416,27 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 	
-	if ((err = sendto(s, newb, ntohs(iph->tot_len),0,(struct sockaddr *)&to, sizeof(to))) < 0)
+	if ((err = sendto(s, newb, ntohs(iph->tot_len), 0,(struct sockaddr *)&to, sizeof(to))) < 0)
 		die("forwarder - sendPacekt: send");
 	
-	count[config.id]++;
+	//count[config.id]++;
 
 	free(newb);	
 }
 
 void terminate(int sig){
-	pthread_kill(thread, sig);
+	//pthread_kill(thread, sig);
 	die(strsignal(sig));
 }
 
 void die(char *error){
 	end = 1;
 	sleep(1);
-
-	perror(error);
-
 	
-	pthread_join(thread, NULL);
+	printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
+
+	//pthread_join(thread, NULL);
 	pthread_mutex_destroy(&lock);
-
-	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
-
-/*
-104
-not 104
-1000
-1000
-560
-352
-*/
-	int k = 0;
-	for(k = 0; k < bs; k++){
-		checkFilter(bags[k]);
-		free(bags[k]);
-	}
-	free(bags);
-
-	printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
 	
 	if(newts != -1)
 		close(newts);
@@ -508,20 +450,15 @@ not 104
 		close(ts);
 	ts = -1;
 	
-	cleanState();
+	if(list != -1)
+		close(list);
+	list = -1;
+
 	clearState();
 	
 	cleanConfigs();
-	clearConfigs();
-
-	if(qh != NULL)
-		nfq_destroy_queue(qh);
-	qh = NULL;
 	
-	if(h != NULL)
-		nfq_close(h);
-	h = NULL;
-	
+	perror(error);
 	exit(1);
 }
 

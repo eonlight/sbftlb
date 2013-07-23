@@ -5,8 +5,6 @@
 
 //LBBloom temp[3];
 
-
-
 void checkFilter(char *buf){
 	
 	LBBloom * bloom = readBloom(buf);
@@ -56,7 +54,7 @@ void checkFilter(char *buf){
 
 	if(bloom->packets > 0){
 
-			printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
+			//printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
 
 		//state.susp[lb]++;
 		//state.asusp[lb]++;
