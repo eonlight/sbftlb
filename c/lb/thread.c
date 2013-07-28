@@ -32,14 +32,14 @@ void checkFilter(char *buf){
 				bloom->packets--;
 				current = removeFromList(current);
 			}
-			/*else if(current->added+fconfig.TIMEOUT < time(0)){
+			else if(current->added+fconfig.TIMEOUT < time(0)){
 				printf("<<<<<<<<<< timeout >>>>>>>>>>>>\n");
 				//state.susp[lb]++;
 				//state.asusp[lb]++;
 				//count[lb]--;
 				//sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
 				current = removeFromList(current);
-			}*/
+			}
 			else {
 				pthread_mutex_lock(&lock);
 				if(state.list[lb] == NULL)

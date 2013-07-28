@@ -111,7 +111,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	struct iphdr *iph = (struct iphdr*) buffer;
 	unsigned short iphdrlen = iph->ihl*4;
 	
-	/*if(iph->protocol == UDP_PROTO){
+	if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
@@ -187,7 +187,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 		}
     	
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-	}*/
+	}
 	
 	// create struct for tcp header
 	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
@@ -205,8 +205,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	// Select wish load balancer will responde
 	int lb = selectLB(host, sport, state.numLB);
 
-	//while(isFaulty(lb)) 
-		//lb = (lb+1)%state.numLB;
+	while(isFaulty(lb)) 
+		lb = (lb+1)%state.numLB;
 
 	// Alterar para algoritmo de escolha de server (eg. rr)
 	int server = getDestination(host, sport, state.numServers);
@@ -218,11 +218,11 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	iph->daddr = inet_addr(state.servers[server].ip);
 
 	// Compute TCP checksum
-	//compute_tcp_checksum(iph, (unsigned short*)tcph);
-	//compute_ip_checksum(iph);
+	compute_tcp_checksum(iph, (unsigned short*)tcph);
+	compute_ip_checksum(iph);
 	
-	//if(amWhatcher(lb, state.numLB))
-		//addToList(lb, recv_len, buffer, server);
+	if(amWhatcher(lb, state.numLB))
+		addToList(lb, recv_len, buffer, server);
 	
 	if(lb == config.id)
 		sendPacket(iph, tcph, buffer, config.id);
@@ -293,10 +293,10 @@ int main(int argc, char **argv){
 
 		close(rs);
 	
-	/*int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
+	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
 		die("unable to create thread");
-	*/
+	
 	int fd, rv;
 	
 	char buf[4096] __attribute__ ((aligned));
@@ -455,7 +455,7 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 }
 
 void terminate(int sig){
-	//pthread_kill(thread, sig);
+	pthread_kill(thread, sig);
 	die(strsignal(sig));
 }
 
@@ -466,7 +466,7 @@ void die(char *error){
 	perror(error);
 
 	
-	//pthread_join(thread, NULL);
+	pthread_join(thread, NULL);
 	pthread_mutex_destroy(&lock);
 
 	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
