@@ -19,15 +19,11 @@ int count[] = {0,0,0};
 
 void addToFilter(char * buffer, int id, int size){
 
-	count[id]++;
-	counter++;
-
 	pthread_mutex_lock(&lock);
 	if(state.blooms != NULL && state.blooms[id] != NULL && state.blooms[id]->bloom != NULL){
 		addToBloom(state.blooms[id]->bloom, buffer, size);
 		state.blooms[id]->packets++;
 	}
-
 	pthread_mutex_unlock(&lock);
 }
 
@@ -57,8 +53,6 @@ void addNewLB(int id, char *ip){
 
 int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 	
-	//printf("recv\n");
-
 	unsigned char *buffer;
 	// buffer[recv_len] == '\0'
 	nfq_get_payload(nfa, (char **) &buffer);
@@ -77,19 +71,16 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
-    	int type;
+    	int type, lbid;
     	memcpy(&type, pl, sizeof(int));
-    	printf("type: %d,", type);
-    	int lbid;
 		memcpy(&lbid, pl+sizeof(int), sizeof(int));
-		printf("id: %d\n", lbid);
-    	
-    	if(type == 1){
+
+    	if(type == PROTO_LB_HELLO){
 			if(lbid == state.numLB){
 				struct sockaddr_in source;
 				memset(&source, 0, sizeof(source));
     			source.sin_addr.s_addr = iph->saddr;
-    			printf("Adding new LB\n");
+    			printf("Adding new LB...\n");
 				//Add new LB to the list
 				addNewLB(lbid, inet_ntoa(source.sin_addr));
 			}
@@ -134,6 +125,11 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	if(lb >= 0)// && ((unsigned int)tcph->syn) != 1)
 		addToFilter((char *)buffer, lb, tot_len);
 
+	/* INFO | TEST vars */
+	count[lb]++;
+	counter++;
+	/* END */
+
 	// Default: accept packets
 	return nfq_set_verdict(qh, id, NF_ACCEPT, ntohs(iph->tot_len), (unsigned char *)buffer);
 }
@@ -154,37 +150,24 @@ int main(int argc, char **argv){
 	signal(SIGKILL, terminate);
 	
 	readConfig(argv[1]);
-	
 	addIptablesRules();
 
-	//if(argc > 2 && argv[2][0] == '1') {
-	//	printf("Adding this new Server...\n");
+	//HELLO protocol
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	//	printf("ok0\n");
+	struct sockaddr_in all;
+	all.sin_family = AF_INET;
+	all.sin_addr.s_addr = inet_addr(config.frontEnd);
+	all.sin_port = htons(config.helloPort);
 
-		int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int type = PROTO_SERV_HELLO;
+	char hello[sizeof(int)*2+1];
+	memcpy(hello, &type, sizeof(int));
+	memcpy(hello+sizeof(int), &config.id, sizeof(int));
+	hello[sizeof(int)*2] = '\0';
+	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
-		struct sockaddr_in all;
-		all.sin_family = AF_INET;
-		all.sin_addr.s_addr = inet_addr(config.frontEnd);
-		all.sin_port = htons(config.helloPort);
-
-	//	printf("ok1\n");
-
-		int type = 3;
-		char hello[sizeof(int)*2+1];
-		memcpy(hello, &type, sizeof(int));
-		memcpy(hello+sizeof(int), &config.id, sizeof(int));
-		hello[sizeof(int)*2] = '\0';
-
-	//	printf("ok2\n");
-
-		sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
-
-	//	printf("ok3\n");
-
-		close(rs);
-	//}
+	close(rs);
 	
 	int ret = pthread_create(&thread, NULL, bloomThread, NULL);
 	if(ret == -1)
@@ -227,21 +210,22 @@ int main(int argc, char **argv){
 	
 	printf("Cleaning...\n");
 	// unbinding from queue 1
-	nfq_destroy_queue(qh);
-	
+	if(qh != NULL)
+		nfq_destroy_queue(qh);
 	qh = NULL;
 
 #ifdef INSANE
 	/* normally, applications SHOULD NOT issue this command, since
 	 * it detaches other programs/sockets from AF_INET, too ! */
 	// unbinding from AF_INET
-	nfq_unbind_pf(h, AF_INET);
+	if(h != NULL)
+		nfq_unbind_pf(h, AF_INET);
 #endif
 	// closing library handle
-	nfq_close(h);
-	
+	if(h != NULL)
+		nfq_close(h);
 	h = NULL;
-	
+
 	// closing socket
 	close(s);
 	s = -1;

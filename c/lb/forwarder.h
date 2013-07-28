@@ -17,10 +17,11 @@
 #include <time.h> /* time(0) */
 
 #define UDP_PROTO 17
+#define PROTO_LB_HELLO 1
+#define PROTO_RESET 2
+#define PROTO_SERV_HELLO 3
 
 #include "bloom.c"
-
-int bs = 0;
 
 typedef struct {
 	int id;
@@ -32,42 +33,27 @@ typedef struct {
 	char *ip;
 } LoadBalancer;
 
-typedef struct {
-	int numLB;
-	int numServers;
-	LoadBalancer *lbs;
-	Server *servers;
-	int *susp;
-	int *asusp;
-	HttpRequestNode **list;
-	int *faulty; //tests only
-	int *restart;
-} State;
-
-/* socket */
-int s, err, on = 1;
-int newts = -1;
-
-
-/* thread end flag */
+// thread, end flag and locks
 pthread_t thread;
 pthread_mutex_t lock;
 int end = 0;
 
-/* NFqueue structs */
+#include "state.c"
+
+// sockets and sockets vars
+int s, err, on = 1;
+int newts = -1;
+
+// NFqueue structs 
 struct nfq_handle *h = NULL;
 struct nfq_q_handle *qh = NULL;
 
-/* Aux struct to resend */
+// Aux struct to resend
 struct sockaddr_in to;
 
-State state;
-
 int main(int argc, char **argv);
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
-
-void addNewLB(int id, char *ip);
-void addNewServer(int id, char *ip);
+void handleUDPProtocols(struct iphdr *iph, struct udphdr *udph, char * payload);
+int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
 
 int needRestart();
 int isFaulty(int lb);
@@ -78,8 +64,5 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 
 void die(char *error);
 void terminate(int sig);
-void clearState();
-void resetState();
-void cleanState();
 
 #endif

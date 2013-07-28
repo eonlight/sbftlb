@@ -125,14 +125,6 @@ void *bloomThread(void *arg){
 		for(i = 0; i < state.numLB; i++)		
 			if(state.blooms != NULL && state.blooms[i] != NULL 
 				&& state.blooms[i]->init+config.renew < now){
-					
-					/*pthread_mutex_lock(&lock);
-					char * buf = createBloomBuffer(state.blooms[i]);
-					pthread_mutex_unlock(&lock);
-					//printf("L0: %d | L1: %d | L2: %d\n", count[0], count[1], count[2]);
-					sendBloom(i, buf, blen);
-					resetBloom(state.blooms[i]);
-					free(buf);*/
 
 				pthread_mutex_lock(&lock);
 				if(state.toSend[i] != NULL){
@@ -185,7 +177,6 @@ int isWhatcher(int lb, int whatcher, int num){
 		return 1;
 		
 	return 0;
-	//return (lb+1)%num <= whatcher && (lb+(2*config.faults))%num >= whatcher;
 }
 
 char * createBloomBuffer(LBBloom *bloom){
@@ -193,11 +184,10 @@ char * createBloomBuffer(LBBloom *bloom){
 	// 4b:4b:4b:BLOOM_LEN
 	int ilen = sizeof(int), blen = sizeof(char)*bloom->bloom->bytes;
 	char * buffer = (char *) calloc(sizeof(char), ilen*3+blen+1);
-	//printf("%d:%08X\n",bloom->lb, MurmurHash2(bloom->bloom->bf, blen, 0x00));
-	//printf("%d: %d packets <<<<<<<<<<<<<<<<<\n", bloom->lb, bloom->packets);
-	//count[bloom->lb]-=bloom->packets;
-	printf("Sending %d to %d, %d with %d packets - %08X\n", bloom->lb, (bloom->lb+1)%3, (bloom->lb+2)%3, 
-			bloom->packets, MurmurHash2(bloom->bloom->bf, blen, 0x00));
+
+	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
+	
+	//printf("Sending %d to %d, %d with %d packets - %08X\n", bloom->lb, (bloom->lb+1)%3, (bloom->lb+2)%3, bloom->packets, MurmurHash2(bloom->bloom->bf, blen, 0x00));
 	memcpy(buffer, &(bloom->lb), ilen);
 	memcpy(buffer+ilen, &(bloom->server), ilen);
 	memcpy(buffer+ilen*2, &(bloom->packets), ilen);

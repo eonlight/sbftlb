@@ -264,6 +264,7 @@ void addIptablesRules(){
 
 	sleep(1);
 
+	// received from LB -> LOGGER
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
 						"-p", "tcp", "--dport", port, 
@@ -271,6 +272,7 @@ void addIptablesRules(){
 		execvp("iptables", args);
 	}
 
+	// send to client -> MASK
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "mangle", "-A", "POSTROUTING", 
 						"-p", "tcp", "--sport", port, 
@@ -283,6 +285,7 @@ void addIptablesRules(){
 	sprintf(hport, "%d", config.helloPort);
 	port[plen] = '\0';
 	
+	// HELLO Protocol
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
 						"-p", "udp", "--dport", hport, "-d", 

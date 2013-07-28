@@ -3,71 +3,72 @@
 
 #include "thread.h"
 
-//LBBloom temp[3];
-
-
-
 void checkFilter(char *buf){
 	
 	LBBloom * bloom = readBloom(buf);
-	
 	int lb = bloom->lb;
+
+	int total = bloom->packets;
+
 	// if I saw LBi packets
 	if(state.list[lb] != NULL){
 		
 		HttpRequestNode *current = state.list[lb];
+		HttpRequestNode *head = NULL;
+
+		pthread_mutex_lock(&lock);
 		state.list[lb] = NULL;
-		//printf("%d", a++);
+		state.tail[lb] = NULL;
+		pthread_mutex_unlock(&lock);
+
 		do {
-		
-			// Create structs pointers
-			//struct iphdr *iph = (struct iphdr*) current->buffer;
-			//struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
-			//bloom->packets--;
-			//current = removeFromList(current);
-			if(checkBloom(bloom->bloom, current->buffer, current->len)){
-				//if(state.asusp[lb] > 0)
-				//	state.asusp[lb]--;
-				count[lb]--;
+			if(current->server == bloom->server && checkBloom(bloom->bloom, current->buffer, current->len)){
+				if(state.asusp[lb] > 0)
+					state.asusp[lb]--;
+				/* NO need for locks, this thread the only one working on this list
+				   state.list and state.tail = NULL */
+				current = removeFromList(current);
 				bloom->packets--;
+			}
+			else if(current->server == bloom->server && current->added+fconfig.TIMEOUT < time(0)){
+				// se o server n foi a baixo
+				if(current->blooms > 0){
+					printf("<<<<<<<<<< timeout >>>>>>>>>>>>\n");
+					//state.susp[lb]++;
+					//state.asusp[lb]++;
+					struct iphdr *iph = (struct iphdr*) current->buffer;
+					struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
+					sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
+				}
+
+				/* NO need for locks, this thread the only one working on this list
+				   state.list and state.tail = NULL */
 				current = removeFromList(current);
 			}
-			/*else if(current->added+fconfig.TIMEOUT < time(0)){
-				printf("<<<<<<<<<< timeout >>>>>>>>>>>>\n");
-				//state.susp[lb]++;
-				//state.asusp[lb]++;
-				//count[lb]--;
-				//sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
-				current = removeFromList(current);
-			}*/
 			else {
-				pthread_mutex_lock(&lock);
-				if(state.list[lb] == NULL)
-					state.list[lb] = current;
+				if(head == NULL)
+					head = current;
+				if(current->server == bloom->server)
+					current->blooms++;
 				current = current->next;
-				pthread_mutex_unlock(&lock);
 			}
-		}while(current != NULL);	
+		}while(current != NULL);
+		
+		if(head != NULL){
+			pthread_mutex_lock(&lock);
+				//Add to the begining
+				addNodeToList(lb, head);
+			pthread_mutex_unlock(&lock);
+		}
 	}
 
-	if(bloom->packets < 0){
-		printf("problem:  %d\n", bloom->packets);
-	}
+	if(bloom->packets < 0)
+		printf("NUM colisões: %d. Problem!!!! \n", bloom->packets);
 
 	if(bloom->packets > 0){
-
-			printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
-
+		printf("<<<<<<<<<< %d (%d) a mais de %d >>>>>>>>>>>>\n", bloom->packets, total, bloom->lb);
 		//state.susp[lb]++;
 		//state.asusp[lb]++;
-		/*if(bloom->packets > 100){
-			int d;
-			int fd = 0;
-			for(d = 0; d < bloom->bloom->bfsize; d++)
-				if(bloom->bloom->bf[d] != 0)
-					fd = 1;
-			printf("fd:%d\n",fd);
-		}*/
 	}
 		
 	if(isFaulty(lb))
@@ -78,45 +79,14 @@ void checkFilter(char *buf){
 		
 	if(bloom != NULL)
 		free(bloom);
-		
-	//bloom = NULL;
 
+	/* THERE CAN BE PROBLEMS HERE */
+	bloom = NULL;
+	/* THERE CAN BE PROBLEMS HERE */
 }
 
+/* TODO: alterar para receber LBBloom */
 LBBloom * readBloom(char *buf) {
-	/* with TEMP*/
-	/*int ilen = sizeof(int), blen = sizeof(char)*bconfig.bloomLen;
-	
-	// LB:SERVER_ID:NUM_PACKETS:BLOOM
-	int lb, server, packets;
-	
-	memcpy(&lb, buf, ilen);
-	memcpy(&server, buf+ilen, ilen);
-	memcpy(&packets, buf+2*ilen, ilen);
-	
-	//LBBloom *lbb = (LBBloom *) malloc(sizeof(LBBloom));
-
-	if(temp[lb].bloom == NULL)	
-		if(!(temp[lb].bloom=createBloom(bconfig.bloomLen)))
-			die("cannot create bloom filter");
-
-	temp[lb].server = server;
-	temp[lb].lb = lb;
-	temp[lb].packets = packets;
-
-	memcpy(temp[lb].bloom->bf, buf+3*ilen, blen);
-
-	//printf("Packets: %d <<<<<<<<<<<<<<<<<\n", packets);
-	printf("%d: %d (%d) packets <<<<<<<<<<<<<<<<<\n", lb, packets, count[lb]);
-
-
-	// PRINT LB_BLOOM DATA
-	//printf("**** (s%d,f%d):%d ****\n", server, lb, packets);
-	//printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
-	//printSeenData
-	
-	return &temp[lb];*/
-	/* NORMAL */
 	int ilen = sizeof(int);
 
 	// LB:SERVER_ID:NUM_PACKETS:BLOOM
@@ -139,26 +109,10 @@ LBBloom * readBloom(char *buf) {
 
 	memcpy(lbb->bloom->bf, buf+3*ilen, blen);
 
-	//printf("%d: %d (%d) packets <<<<<<<<<<<<<<<<<\n", lb, packets, count[lb]);
-	//printf("%d:%08X<-%d\n", lb, MurmurHash2(lbb->bloom->bf, blen, 0x00), server);
-	printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, 
-			count[lb], MurmurHash2(lbb->bloom->bf, blen, 0x00));
-	// PRINT LB_BLOOM DATA
-	//printf("**** (s%d,f%d):%d ****\n", server, lb, packets);
+	//printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, count[lb], MurmurHash2(lbb->bloom->bf, blen, 0x00));
 	//printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
 
 	return lbb;
-}
-
-void sendLBsInfo(int newts){
-	char resp[sizeof(int)*state.numLB+1];
-	int i = 0;
-	for(i = 0; i < state.numLB; i++)
-		memcpy(resp+(i*sizeof(int)), &state.faulty[i], sizeof(int));
-	resp[sizeof(int)*state.numLB] = '\0';
-	int w = write(newts, resp, sizeof(int)*state.numLB);
-	if(w < 0)
-		die("cannot respond to Server");
 }
 
 void * bloomChecker(void *arg){
@@ -184,11 +138,6 @@ void * bloomChecker(void *arg){
 	int blen = sizeof(int)*3+
 			sizeof(char)*bloom->bytes;
 
-	/*temp[0].bloom = NULL;
-	temp[1].bloom = NULL;
-	temp[2].bloom = NULL;
-	*/
-	//bags = (char **) malloc(sizeof(char *)*100);
 	socklen_t slen = sizeof(server);
 	while(end != 1 ){
 
@@ -205,16 +154,14 @@ void * bloomChecker(void *arg){
 		while(r < blen)
 			r += read(newts, buffer+r, blen);
 
-		// join to Array
 		checkFilter(buffer);
-		//bags[bs] = (char *) malloc(sizeof(char)*blen);
-		//memcpy(bags[bs], buffer, blen);
-		//bs++;
 		close(newts);
 
 	}
+	
 	if(ts != -1)
 		close(ts);
 	ts = -1;
+
 	return NULL;
 }

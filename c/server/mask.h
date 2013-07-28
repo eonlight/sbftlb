@@ -16,10 +16,11 @@
 #include <time.h> // time(0)
 #include <math.h>
 
-
 #include "bloom.c"
 
 #define UDP_PROTO 17
+#define PROTO_LB_HELLO 1
+#define PROTO_SERV_HELLO 3
 
 typedef struct {
 	Bloom *bloom;
