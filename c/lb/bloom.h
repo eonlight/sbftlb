@@ -1,8 +1,7 @@
 #ifndef __BLOOM_H__
 #define __BLOOM_H__
 
-#include<stdlib.h>
-
+#include <stdlib.h>
 
 typedef struct {
 	int entries;

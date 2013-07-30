@@ -7,6 +7,7 @@
 #include <string.h>
 
 int count[] = {0,0,0};
+int lcount[] = {0,0,0};
 int counter = 0;
 
 #include "hashs.c"
@@ -50,25 +51,32 @@ void addNewLB(int id, char *ip){
 	memcpy(newLBS, state.lbs, sizeof(LoadBalancer)*state.numLB);
 	LoadBalancer * oldLBS = state.lbs;
 	state.lbs = newLBS;
-
-	HttpRequestNode ** newList = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
-	for(i = 0; i < state.numLB; i++)
-		newList[i] = state.list[i];
-	
-	newList[i] = NULL;
-
 	free(oldLBS);
+
+	pthread_mutex_lock(&lock);
+	HttpRequestNode ** newList = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
+	HttpRequestNode ** newTail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
+	for(i = 0; i < state.numLB; i++){
+		newList[i] = state.list[i];
+		newTail[i] = state.tail[i];
+	}
+	newList[i] = NULL;
+	newTail[i] = NULL;
+
+	HttpRequestNode ** oldList = state.list;
+	HttpRequestNode ** oldTail = state.tail;
+	state.list = newList;
+	state.tail = newTail;
+	free(oldList);
+	free(oldTail);
+	pthread_mutex_unlock(&lock);
 
 	state.lbs[i].ip = (char *) malloc(sizeof(char)*(strlen(ip)+1));
 	memcpy(state.lbs[i].ip, ip, strlen(ip)*sizeof(char));
 	state.lbs[i].ip[strlen(ip)] = '\0';
 	state.lbs[i].id = id;
 
-	HttpRequestNode ** oldList = state.list;
-	state.list = newList;
-	free(oldList);
-
-	int * newSusp, * newAsusp, * newFaulty, * newRestart;
+	int * newSusp, * newAsusp, * newRestart;
 
 	newSusp = (int *) calloc(sizeof(int), state.numLB+1);
 	memcpy(newSusp, state.susp, state.numLB*sizeof(int));
@@ -80,12 +88,6 @@ void addNewLB(int id, char *ip){
 	memcpy(newAsusp, state.asusp, state.numLB*sizeof(int));
 	old = state.asusp;
 	state.asusp = newAsusp;
-	free(old);
-
-	newFaulty = (int *) calloc(sizeof(int), state.numLB+1);
-	memcpy(newFaulty, state.faulty, state.numLB*sizeof(int));
-	old = state.faulty;
-	state.faulty = newFaulty;
 	free(old);
 
 	newRestart = (int *) calloc(sizeof(int), state.numLB+1);
@@ -115,22 +117,22 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
-    	int type;
+    	int type, lbid;
     	memcpy(&type, pl, sizeof(int));
-    	printf("type: %d,", type);
-    	int lbid;
 		memcpy(&lbid, pl+sizeof(int), sizeof(int));
-		printf("id: %d\n", lbid);
     	
-    	if(type == 1){
+    	if(type == HELLO_LB_PROTO){
 			if(lbid >= 0 && lbid < state.numLB){
-				state.faulty[lbid] = 0;
 				state.susp[lbid] = 0;
 				state.asusp[lbid] = 0;
 
+				pthread_mutex_lock(&lock);
 				if(state.list[lbid] != NULL)
 					cleanList(state.list[lbid]);
 				state.list[lbid] = NULL;
+				state.tail[lbid] = NULL;
+				pthread_mutex_unlock(&lock);
+
 			}
 			else if(lbid == state.numLB){
 				struct sockaddr_in source;
@@ -141,7 +143,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 				addNewLB(lbid, inet_ntoa(source.sin_addr));
 			}
 		} 
-		else if(type == 3) {
+		else if(type == HELLO_SERV_PROTO) {
 			int serverID = lbid;
 			if(serverID == state.numServers){
 				struct sockaddr_in source;
@@ -153,7 +155,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 			}
 			
 		}
-		else if(type == 2 && lbid == config.id){
+		else if(type == RESET_LB_PROTO && lbid == config.id){
 		
 			int sid;
 			memcpy(&sid, pl+sizeof(int)*2, sizeof(int));
@@ -173,7 +175,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 				all.sin_addr.s_addr = inet_addr(config.frontEnd);
 				all.sin_port = htons(config.helloPort);
 		
-				int type = 1;
+				int type = HELLO_LB_PROTO;
 				char hello[sizeof(int)*2+1];
 				memcpy(hello, &type, sizeof(int));
 				memcpy(hello+sizeof(int), &config.id, sizeof(int));
@@ -205,8 +207,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	// Select wish load balancer will responde
 	int lb = selectLB(host, sport, state.numLB);
 
-	while(isFaulty(lb)) 
-		lb = (lb+1)%state.numLB;
+	//while(isFaulty(lb)) 
+	//	lb = (lb+1)%state.numLB;
 
 	// Alterar para algoritmo de escolha de server (eg. rr)
 	int server = getDestination(host, sport, state.numServers);
@@ -221,8 +223,12 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 	
-	if(amWhatcher(lb, state.numLB))
+	if(amWhatcher(lb, state.numLB)){
+		pthread_mutex_lock(&lock);
 		addToList(lb, recv_len, buffer, server);
+		lcount[lb]++;
+		pthread_mutex_unlock(&lock);
+	}
 	
 	if(lb == config.id)
 		sendPacket(iph, tcph, buffer, config.id);
@@ -271,27 +277,24 @@ int main(int argc, char **argv){
 	signal(SIGKILL, terminate);
 
 	readConfig(argv[1]);
-	
 	addIptablesRules();
 	
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
+	struct sockaddr_in all;
+	all.sin_family = AF_INET;
+	all.sin_addr.s_addr = inet_addr(config.frontEnd);
+	all.sin_port = htons(config.helloPort);
 
-		int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int type = HELLO_LB_PROTO;
+	char hello[sizeof(int)*2+1];
+	memcpy(hello, &type, sizeof(int));
+	memcpy(hello+sizeof(int), &config.id, sizeof(int));
+	hello[sizeof(int)*2] = '\0';
 
-		struct sockaddr_in all;
-		all.sin_family = AF_INET;
-		all.sin_addr.s_addr = inet_addr(config.frontEnd);
-		all.sin_port = htons(config.helloPort);
+	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
-		int type = 1;
-		char hello[sizeof(int)*2+1];
-		memcpy(hello, &type, sizeof(int));
-		memcpy(hello+sizeof(int), &config.id, sizeof(int));
-		hello[sizeof(int)*2] = '\0';
-
-		sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
-
-		close(rs);
+	close(rs);
 	
 	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
@@ -377,10 +380,9 @@ int isFaulty(int lb){
 
 void markFaulty(int lb){
 	printf("---->>> %d says LB%d is faulty <<<----\n", config.id, lb);
-	state.faulty[lb] = 1;
 	
 	// send restart request to faulty replica
-	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	/*int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	struct sockaddr_in all;
 	all.sin_family = AF_INET;
@@ -396,7 +398,7 @@ void markFaulty(int lb){
 		
 	sendto(rs, (const char*) reset, sizeof(int)*3, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
-	close(rs);
+	close(rs);*/
 	
 	//printf("/sent\n");
 }
@@ -505,12 +507,14 @@ void resetState() {
 	for(i = 0; i < state.numLB; i++){
 		state.susp[i] = 0;
 		state.asusp[i] = 0;
-		state.faulty[i] = 0;
 
+		pthread_mutex_lock(&lock);
 		if(state.list[i] != NULL)
 			cleanList(state.list[i]);
 		state.list[i] = NULL;
-		
+		state.tail[i] = NULL;
+		pthread_mutex_unlock(&lock);
+
 		if(state.restart != NULL)
 			state.restart[i] = 0;
 	}
@@ -524,7 +528,7 @@ void clearState() {
 	state.susp = NULL;
 	state.asusp = NULL;
 	state.list = NULL;
-	state.faulty = NULL;
+	state.tail = NULL;
 	state.restart = NULL;
 }
 
@@ -540,15 +544,20 @@ void cleanState() {
 	}		
 	state.lbs = NULL;
 	
+	pthread_mutex_lock(&lock);
 	if(state.list != NULL){
 		for(i = 0; i < state.numLB; i++){
 			if(state.list[i] != NULL)
 				cleanList(state.list[i]);
 			state.list[i] = NULL;
+			state.tail[i] = NULL;
 		}
 		free(state.list);
+		free(state.tail);
 	}
 	state.list = NULL;
+	state.tail = NULL;
+	pthread_mutex_unlock(&lock);
 	
 	if(state.servers != NULL){
 		for(i = 0; i < state.numServers; i++){
@@ -563,10 +572,6 @@ void cleanState() {
 	if(state.restart != NULL)
 		free(state.restart);
 	state.restart = NULL;
-	
-	if(state.faulty != NULL)
-		free(state.faulty);
-	state.faulty = NULL;
 	
 	if(state.susp != NULL)
 		free(state.susp);

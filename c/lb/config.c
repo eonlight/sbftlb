@@ -189,16 +189,17 @@ void parseLine(char *line, int l){
 				
 				state.lbs = (LoadBalancer *) malloc(sizeof(LoadBalancer)*state.numLB);
 				state.list = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
+				state.tail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
 				
 				for(i = 0; i < state.numLB; i++){
 					state.lbs[i].ip = NULL;
 					state.lbs[i].id = i;
 					state.list[i] = NULL;
+					state.tail[i] = NULL;
 				}
 
 				state.susp = (int *) calloc(sizeof(int), state.numLB);
 				state.asusp = (int *) calloc(sizeof(int), state.numLB);
-				state.faulty = (int *) calloc(sizeof(int), state.numLB);
 				state.restart = (int *) calloc(sizeof(int), state.numLB);
 												
 				return;

@@ -1,9 +1,7 @@
-#include"httpreqlist.h"
+#include "httpreqlist.h"
 #include "forwarder.h"
 
 void cleanList(HttpRequestNode *head){
-	pthread_mutex_lock(&lock);
-
 	while(head != NULL){
 		if(head->buffer != NULL)
 			free(head->buffer);
@@ -12,14 +10,10 @@ void cleanList(HttpRequestNode *head){
 		free(head);
 		head = aux;
 	}
-	
-	pthread_mutex_unlock(&lock);
 }
 
 /* devovler o proximo */
 HttpRequestNode * removeFromList(HttpRequestNode * current){
-
-	pthread_mutex_lock(&lock);
 
 	if(current == NULL || current->buffer == NULL)
 		return NULL;
@@ -41,15 +35,11 @@ HttpRequestNode * removeFromList(HttpRequestNode * current){
 	if(current != NULL)
 		free(current);
 	current = NULL;
-
-	pthread_mutex_unlock(&lock);
 	
 	return aux;
 }
 
 void addToList(int lb, int len, unsigned char * buffer, int server){
-
-	pthread_mutex_lock(&lock);
 
 	if(state.list[lb] == NULL){
 		state.list[lb] = (HttpRequestNode *) malloc(sizeof(HttpRequestNode));
@@ -60,10 +50,12 @@ void addToList(int lb, int len, unsigned char * buffer, int server){
 		state.list[lb]->server = server;
 		state.list[lb]->added = time(0);
 		state.list[lb]->len = len;
+		state.list[lb]->blooms = 0;
 		state.list[lb]->buffer[len] = '\0';
+		state.tail[lb] = state.list[lb];
 	}
 	else {
-
+		/*
 		HttpRequestNode *current = state.list[lb];
 		state.list[lb]->prev = (HttpRequestNode *) malloc(sizeof(HttpRequestNode));
 
@@ -74,17 +66,20 @@ void addToList(int lb, int len, unsigned char * buffer, int server){
 		current->prev->server = server;
 		current->prev->added = time(0);
 		current->prev->len = len;
+		current->prev->blooms = 0;
 
 		state.list[lb]->prev->next = state.list[lb];
 		state.list[lb]->prev->prev = NULL;
 
 		state.list[lb] = current->prev;
 
-		/*
-		HttpRequestNode *current = state.list[lb];
+		*/
+
+
+		HttpRequestNode *current = state.tail[lb];
 	
-		while(current->next != NULL)
-			current = current->next;
+		/*while(current->next != NULL)
+			current = current->next;*/
 		
 		current->next = (HttpRequestNode *) malloc(sizeof(HttpRequestNode));
 		
@@ -93,13 +88,13 @@ void addToList(int lb, int len, unsigned char * buffer, int server){
 		current->next->buffer[len] = '\0';
 		
 		current->next->server = server;
-		
+		current->next->blooms = 0;
 		current->next->added = time(0);
 		current->next->len = len;
 		
 		current->next->next = NULL;
-		current->next->prev = current;*/
-	}
-	
-	pthread_mutex_unlock(&lock);
+		current->next->prev = current;
+
+		state.tail[lb] = current->next;
+	}	
 }

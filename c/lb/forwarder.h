@@ -17,10 +17,11 @@
 #include <time.h> /* time(0) */
 
 #define UDP_PROTO 17
+#define HELLO_SERV_PROTO 3
+#define RESET_LB_PROTO 2
+#define HELLO_LB_PROTO 1
 
 #include "bloom.c"
-
-int bs = 0;
 
 typedef struct {
 	int id;
@@ -40,7 +41,7 @@ typedef struct {
 	int *susp;
 	int *asusp;
 	HttpRequestNode **list;
-	int *faulty; //tests only
+	HttpRequestNode **tail;
 	int *restart;
 } State;
 

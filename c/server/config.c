@@ -30,8 +30,6 @@ void parseConfigLine(char *line, int l){
 					state.lbs[i].id = i;
 					state.lbs[i].ip = NULL;
 				}
-
-				state.faulty = (int *)calloc(sizeof(int), state.numLB);
 			
 				return;
 			}
@@ -220,7 +218,6 @@ void readConfig(char *filename){
 	if(state.blooms == NULL) {
 		state.blooms = (LBBloom **) malloc(sizeof(LBBloom *)*state.numLB);
 		state.toSend = (LBBloom **) malloc(sizeof(LBBloom *)*state.numLB);
-
 
 		for(i = 0; i < state.numLB; i++){
 			state.blooms[i] = (LBBloom *) malloc(sizeof(LBBloom));

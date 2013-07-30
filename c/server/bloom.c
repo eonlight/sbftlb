@@ -1,7 +1,7 @@
-#include<limits.h>
-#include<stdarg.h>
+#include <limits.h>
+#include <stdarg.h>
 
-#include"bloom.h"
+#include "bloom.h"
 
 int bloom_check_add(Bloom * bloom, const void * buffer, int len, int add) {
   if (bloom->ready == 0) {

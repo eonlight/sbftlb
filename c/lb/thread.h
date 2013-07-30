@@ -12,9 +12,8 @@ typedef struct {
 /* Socket to send and receive blooms */
 int ts;
 
-void sendLBsInfo(int newts);
 void * bloomChecker(void *arg);
-void checkFilter(char *buf);
+void checkFilter(LBBloom * bloom);
 LBBloom * readBloom(char *buf);
 
 #endif

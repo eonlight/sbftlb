@@ -16,10 +16,11 @@
 #include <time.h> // time(0)
 #include <math.h>
 
-
 #include "bloom.c"
 
 #define UDP_PROTO 17
+#define HELLO_SERV_PROTO 3
+#define HELLO_LB_PROTO 1
 
 typedef struct {
 	Bloom *bloom;
@@ -39,7 +40,6 @@ typedef struct {
 	LoadBalancer *lbs;
 	LBBloom **blooms;
 	LBBloom **toSend;
-	int *faulty;
 } State;
 
 // socket vars
@@ -57,7 +57,7 @@ struct nfq_q_handle *qh = NULL;
 State state;
 
 int main(int argc, char **argv);
-int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
+int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data);
 
 void addNewLB(int id, char *ip);
 

@@ -3,7 +3,7 @@
 ovs-ofctl add-flow tcp:192.168.2.254:6634 ip,idle_timeout=0,nw_dst=192.168.7.4,actions=output:20
 ovs-ofctl add-flow tcp:192.168.2.254:6634 ip,idle_timeout=0,nw_dst=192.168.7.5,actions=output:15
 ovs-ofctl add-flow tcp:192.168.2.254:6634 ip,idle_timeout=0,nw_dst=192.168.7.21,actions=output:11
-ovs-ofctl add-flow tcp:192.168.2.254:6634 ip,idle_timeout=0,nw_dst=192.168.7.100,actions=output:3,5,7
+ovs-ofctl add-flow tcp:192.168.2.254:6634 ip,idle_timeout=0,nw_dst=192.168.7.100,actions=output:3,5,9
 ovs-ofctl add-flow tcp:192.168.2.254:6634 arp,idle_timeout=0,actions=NORMAL
 
 S3
