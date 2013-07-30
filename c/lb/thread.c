@@ -16,6 +16,37 @@ void addListToList(int lb, HttpRequestNode *head, HttpRequestNode *tail){
 	}
 }
 
+void * checkList(void * args){
+	sleep(1);
+	//long my_id = (long) args;
+	int myid = 0;
+	for(myid = 0; myid < SEARCH_THREADS_NUM; myid++)
+		if(searchThreads[myid] == pthread_self())
+			break;
+
+	printf("Myid: %d\n", myid);
+
+	while(end != 1){
+		pthread_mutex_lock(&searchLocks[myid]);
+		if(workingBloom != NULL && workingBloom->threads[myid] != 1){//} && searchList[myid] != NULL){
+			//check my stuffs
+			//HttpRequestNode *current = searchList[myid];
+			searchList[myid] = NULL;
+			pthread_mutex_unlock(&searchLocks[myid]);
+
+			//check
+			workingBloom->threads[myid] = 1;
+		}
+		else{
+			pthread_mutex_unlock(&searchLocks[myid]);
+			sleep(config.wait);
+		}
+	}
+
+	pthread_exit((void *) args);
+}
+
+
 void checkFilter(LBBloom * bloom){
 	
 	int lb = bloom->lb;
@@ -92,7 +123,7 @@ void checkFilter(LBBloom * bloom){
 
 }
 
-LBBloom * readBloom(char *buf) {
+void readBloom(char *buf) {
 	int ilen = sizeof(int);
 
 	// LB:SERVER_ID:NUM_PACKETS:BLOOM
@@ -102,23 +133,24 @@ LBBloom * readBloom(char *buf) {
 	memcpy(&server, buf+ilen, ilen);
 	memcpy(&packets, buf+2*ilen, ilen);
 
-	LBBloom *lbb = (LBBloom *) malloc(sizeof(LBBloom));
+	workingBloom = (LBBloom *) malloc(sizeof(LBBloom));
 
-	if(!(lbb->bloom=createBloom(bconfig.bloomLen, 0.1)))
+	if(!(workingBloom->bloom=createBloom(bconfig.bloomLen, 0.1)))
 		die("cannot create bloom filter");
 
-	int blen = sizeof(char)*lbb->bloom->bytes;
+	int blen = sizeof(char)*workingBloom->bloom->bytes;
 
-	lbb->server = server;
-	lbb->lb = lb;
-	lbb->packets = packets;
+	workingBloom->server = server;
+	workingBloom->lb = lb;
+	workingBloom->packets = packets;
+	int i = 0;
+	for(i = 0; i < SEARCH_THREADS_NUM; i++)
+		workingBloom->threads[i] = 0;
 
-	memcpy(lbb->bloom->bf, buf+3*ilen, blen);
+	memcpy(workingBloom->bloom->bf, buf+3*ilen, blen);
 
-	//printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, count[lb], MurmurHash2(lbb->bloom->bf, blen, 0x00));
+	//printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, count[lb], MurmurHash2(workingBloom->bloom->bf, blen, 0x00));
 	printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
-
-	return lbb;
 }
 
 void * bloomChecker(void *arg){
@@ -161,14 +193,50 @@ void * bloomChecker(void *arg){
 		int r = 0;
 		while(r < blen)
 			r += read(newts, buffer+r, blen);
+		
 
-		LBBloom * lbb = readBloom(buffer);
+		printf("new bloom...\n");
+
+		readBloom(buffer);
+
+		int i = 0;
+		for(i = 0; i < SEARCH_THREADS_NUM; i++){
+
+		}
 
 		/* TODO: THREADS!!!!! */
 		/* checkfilter -> function thread */
 		/* new function, locks[num_threads], check_list[num_threads] */
-		checkFilter(lbb);
+		//checkFilter(lbb);
+		while(i != SEARCH_THREADS_NUM){
+			for(i = 0; i < SEARCH_THREADS_NUM; i++)
+				if(workingBloom->threads[i] == 0)
+					break;
+			if(i != SEARCH_THREADS_NUM)
+				sleep(0.001);
+		}
 
+		int lb = workingBloom->lb;
+
+		if(workingBloom->packets < 0)
+			printf("!!!!!!!!!!!!!!!!!!!! Problem: %d collisions. !!!!!!!!!!!!!!!!!!!!\n", workingBloom->packets);
+
+		if(workingBloom->packets > 0){
+			printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", workingBloom->packets, workingBloom->lb);
+			state.susp[lb]++;
+			state.asusp[lb]++;
+		}
+				
+		if(isFaulty(lb))
+			markFaulty(lb);
+
+		if(workingBloom->bloom != NULL)
+			destroyBloom(workingBloom->bloom);
+				
+		if(workingBloom != NULL)
+			free(workingBloom);
+		workingBloom = NULL;
+		
 		close(newts);
 
 	}
@@ -177,5 +245,5 @@ void * bloomChecker(void *arg){
 		close(ts);
 	ts = -1;
 
-	return NULL;
+	pthread_exit((void *)arg);
 }

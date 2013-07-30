@@ -239,26 +239,6 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
 
-/*
-	communication between lbs
-	TYPE:ID:INFO...
-	TYPE 1 = Hello Recover
-	TYPE 2 = Request Recover
-*/
-
-int isWhatcher(int lb, int whatcher, int num){
-	int i;
-	for(i = (lb+1)%num; i != (lb+(2*fconfig.faults))%num ; i=(i+1)%num)
-		if(whatcher == i)
-			return 1;
-	
-	if(whatcher == i)		
-		return 1;
-		
-	return 0;
-	//return (lb+1)%num <= whatcher || whatcher <= (lb+(2*fconfig.faults))%num;
-}
-
 int main(int argc, char **argv){
 
 	printf("starting...\n");
@@ -268,13 +248,8 @@ int main(int argc, char **argv){
 		die("no config file");
 	}
 	
-	// init mutex 
-	if (pthread_mutex_init(&lock, NULL) != 0)
-        die("mutex init failed");
-
 	signal(SIGINT, terminate);
-	signal(SIGTERM, terminate);
-	signal(SIGKILL, terminate);
+	//signal(SIGTERM, terminate);
 
 	readConfig(argv[1]);
 	addIptablesRules();
@@ -295,11 +270,36 @@ int main(int argc, char **argv){
 	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
 
 	close(rs);
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+	mainID = pthread_self();
+
+	printf("main id: %d\n", mainID);
+
+	long i = 0;
+	//init search threads and vars
+    for(i = 0; i < SEARCH_THREADS_NUM; i++){
+    	//search locks
+    	if(pthread_mutex_init(&searchLocks[i], NULL) != 0)
+        	die("search mutex init failed");
+        //search lists
+        searchList[i] = NULL;
+        if(pthread_create(&searchThreads[i], &attr, checkList, NULL) == -1)
+        	die("unable to create search thread");
+    }
 	
-	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
+    // init mutex 
+	if (pthread_mutex_init(&lock, NULL) != 0)
+        die("mutex init failed");
+
+	int ret = pthread_create(&thread, &attr, bloomChecker, NULL);
 	if(ret == -1)
 		die("unable to create thread");
-	
+
+	pthread_attr_destroy(&attr);
+
 	int fd, rv;
 	
 	char buf[4096] __attribute__ ((aligned));
@@ -353,12 +353,13 @@ int main(int argc, char **argv){
 	
 	qh = NULL;
 	
-#ifdef INSANE
+//#define INSANE 1
+//#ifdef INSANE
 	/* normally, applications SHOULD NOT issue this command, since
 	 * it detaches other programs/sockets from AF_INET, too ! */
 	// unbinding from AF_INET
 	nfq_unbind_pf(h, AF_INET);
-#endif
+//#endif
 	// closing library handle
 	nfq_close(h);
 	
@@ -426,8 +427,8 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	int tot_len = ntohs(iph->tot_len);
 	
 	// create new buffer to add ID
-	if(tot_len >= 1500)
-		tot_len -= addlen;
+	//(tot_len >= 1500)
+	//	tot_len -= addlen;
 
 	unsigned char * newb = (unsigned char *) malloc(sizeof(char)*(tot_len+addlen));
 
@@ -457,49 +458,65 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 }
 
 void terminate(int sig){
-	pthread_kill(thread, sig);
+	//printf("sig: %d\n", sig);
+	//printf("sig: %d\n", (int) pthread_self());
 	die(strsignal(sig));
 }
 
 void die(char *error){
-	end = 1;
-	sleep(1);
+	printf("die %d...\n", (int) pthread_self());
 
-	perror(error);
+	if(mainID == (int) pthread_self()){
+		end = 1;
 
-	
-	pthread_join(thread, NULL);
-	pthread_mutex_destroy(&lock);
+		printf("joining threads\n");
+		long i = 0;
+	    for(i = 0; i < SEARCH_THREADS_NUM; i++){
+	    	pthread_kill(searchThreads[i], 2);
+			if(pthread_join(searchThreads[i], NULL))
+		    	printf("error on join\n");
+	    	pthread_mutex_destroy(&searchLocks[i]);
+	    }
 
-	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
+		printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
 
-	if(newts != -1)
-		close(newts);
-	newts = -1;
-	
-	if(s != -1)
-		close(s);
-	s= -1;
+		pthread_kill(thread, 2);
+		pthread_join(thread,NULL);
 
-	if(ts != -1)
-		close(ts);
-	ts = -1;
-	
-	cleanState();
-	clearState();
-	
-	cleanConfigs();
-	clearConfigs();
+		if(newts != -1)
+			close(newts);
+		newts = -1;
+		
+		if(s != -1)
+			close(s);
+		s= -1;
 
-	if(qh != NULL)
-		nfq_destroy_queue(qh);
-	qh = NULL;
+		if(ts != -1)
+			close(ts);
+		ts = -1;
+		
+		cleanState();
+		clearState();
+
+		cleanConfigs();
+		clearConfigs();
+
+		if(qh != NULL)
+			nfq_destroy_queue(qh);
+		qh = NULL;
+		
+		//nfq_unbind_pf(h, AF_INET);
+
+		if(h != NULL)
+			nfq_close(h);
+		h = NULL;
+
+		pthread_mutex_destroy(&lock);
+	}
 	
-	if(h != NULL)
-		nfq_close(h);
-	h = NULL;
-	
-	exit(1);
+	//printf("exit...\n");
+	pthread_exit(NULL);
+	//exit(1);
 }
 
 void resetState() {
