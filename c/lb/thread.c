@@ -4,15 +4,15 @@
 #include "thread.h"
 
 // add to the head
-void addListToList(int lb, HttpRequestNode *head, HttpRequestNode *tail){
-	if(state.list[lb] == NULL){
-		state.list[lb] = head;
+void addListToList(int t, int lb, HttpRequestNode *head, HttpRequestNode *tail){
+	if(state.list[t][lb] == NULL){
+		state.list[t][lb] = head;
 		//state.tail[lb] = tail;
 	}
 	else {
-		tail->next = state.list[lb];
-		state.list[lb]->prev = tail;
-		state.list[lb] = head;
+		tail->next = state.list[t][lb];
+		state.list[t][lb]->prev = tail;
+		state.list[t][lb] = head;
 	}
 }
 
@@ -27,20 +27,67 @@ void * checkList(void * args){
 	printf("Myid: %d\n", myid);
 
 	while(end != 1){
-		pthread_mutex_lock(&searchLocks[myid]);
-		if(workingBloom != NULL && workingBloom->threads[myid] != 1){//} && searchList[myid] != NULL){
-			//check my stuffs
-			//HttpRequestNode *current = searchList[myid];
-			searchList[myid] = NULL;
-			pthread_mutex_unlock(&searchLocks[myid]);
 
-			//check
+		if(workingBloom != NULL && workingBloom->threads[myid] != 1){
+
+			int lb = workingBloom->lb;
+			int server = workingBloom->server;
+
+			pthread_mutex_lock(&searchLocks[myid]);
+			if(state.list[myid][lb] != NULL){
+
+				//check my stuffs
+				HttpRequestNode *current = state.list[myid][lb];
+				state.list[myid][lb] = NULL;
+				state.tail[myid][lb] = NULL;
+				int nlist = lcount[lb];
+				pthread_mutex_unlock(&searchLocks[myid]);
+
+				HttpRequestNode *head = NULL;
+				HttpRequestNode *tail = NULL;
+
+				//check
+				do {
+					current = removeFromList(current);
+					/*if(current->server == server && checkBloom(workingBloom->bloom, current->buffer, current->len)){
+						if(state.asusp[lb] > 0)
+							state.asusp[lb]--;
+
+						workingBloom->packets--;
+						current = removeFromList(current);
+						lcount[lb]--;
+
+					}
+					else if(current->server == server && current->added+fconfig.TIMEOUT < time(0)){
+						printf("<<<<<<<<<< timeout: %d >>>>>>>>>>>>\n", nlist);
+						state.susp[lb]++;
+						state.asusp[lb]++;
+						// Create structs pointers
+						//struct iphdr *iph = (struct iphdr*) current->buffer;
+						//struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
+						//sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
+						current = removeFromList(current);
+						lcount[lb]--;
+					}
+					else {
+						if(head == NULL)
+							head = current;
+						tail = current;
+						current = current->next;
+					}*/
+
+				}while(current != NULL);
+				
+				pthread_mutex_lock(&searchLocks[myid]);
+				if(head != NULL)
+					addListToList(myid, lb, head, tail);
+			}
+			
+			pthread_mutex_unlock(&searchLocks[myid]);
 			workingBloom->threads[myid] = 1;
 		}
-		else{
-			pthread_mutex_unlock(&searchLocks[myid]);
+		else
 			sleep(config.wait);
-		}
 	}
 
 	pthread_exit((void *) args);
@@ -50,10 +97,10 @@ void * checkList(void * args){
 void checkFilter(LBBloom * bloom){
 	
 	int lb = bloom->lb;
-	int server = bloom->server;
+	//int server = bloom->server;
 
 	// if I saw LBi packets
-	if(state.list[lb] != NULL){
+	/*if(state.list[lb] != NULL){
 		
 		pthread_mutex_lock(&lock);
 		HttpRequestNode *current = state.list[lb];
@@ -96,10 +143,10 @@ void checkFilter(LBBloom * bloom){
 
 		if(head != NULL){
 			pthread_mutex_lock(&lock);
-			addListToList(lb, head, tail);
+			addListToList(t, lb, head, tail);
 			pthread_mutex_unlock(&lock);
 		}
-	}
+	}*/
 
 	if(bloom->packets < 0){
 		printf("problem:  %d\n", bloom->packets);
@@ -200,9 +247,9 @@ void * bloomChecker(void *arg){
 		readBloom(buffer);
 
 		int i = 0;
-		for(i = 0; i < SEARCH_THREADS_NUM; i++){
+		/*for(i = 0; i < SEARCH_THREADS_NUM; i++){
 
-		}
+		}*/
 
 		/* TODO: THREADS!!!!! */
 		/* checkfilter -> function thread */
@@ -213,7 +260,7 @@ void * bloomChecker(void *arg){
 				if(workingBloom->threads[i] == 0)
 					break;
 			if(i != SEARCH_THREADS_NUM)
-				sleep(0.001);
+				sleep(0.0001);
 		}
 
 		int lb = workingBloom->lb;

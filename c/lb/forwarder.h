@@ -42,8 +42,8 @@ typedef struct {
 	Server *servers;
 	int *susp;
 	int *asusp;
-	HttpRequestNode **list;
-	HttpRequestNode **tail;
+	HttpRequestNode **list[SEARCH_THREADS_NUM];
+	HttpRequestNode **tail[SEARCH_THREADS_NUM];
 	int *restart;
 } State;
 
@@ -54,7 +54,7 @@ int newts = -1;
 
 /* thread end flag */
 pthread_t thread;
-pthread_mutex_t lock; //primary list lock
+//pthread_mutex_t lock; //primary list lock
 pthread_attr_t attr;
 int end = 0;
 
@@ -63,7 +63,7 @@ int mainID;
 /* thread pool and vars to check httplist */
 pthread_t searchThreads[SEARCH_THREADS_NUM]; // search threads
 pthread_mutex_t searchLocks[SEARCH_THREADS_NUM]; //locks of the lists
-HttpRequestNode *searchList[SEARCH_THREADS_NUM]; //list to check
+//HttpRequestNode *searchList[SEARCH_THREADS_NUM]; //list to check
 
 
 /* NFqueue structs */

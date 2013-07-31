@@ -13,6 +13,6 @@ typedef struct request_node{
 
 void cleanList(HttpRequestNode *head);
 HttpRequestNode * removeFromList(HttpRequestNode *current);
-void addToList(int lb, int len, unsigned char * buffer, int server);
+void addToList(int t, int lb, int len, unsigned char * buffer, int server);
 
 #endif

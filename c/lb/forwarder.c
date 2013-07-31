@@ -45,7 +45,7 @@ void addNewServer(int id, char *ip){
 }
 
 void addNewLB(int id, char *ip){
-	int i;
+	//int i = 0;
 
 	LoadBalancer *newLBS = (LoadBalancer *) malloc(sizeof(LoadBalancer)*(state.numLB+1));
 	memcpy(newLBS, state.lbs, sizeof(LoadBalancer)*state.numLB);
@@ -53,7 +53,9 @@ void addNewLB(int id, char *ip){
 	state.lbs = newLBS;
 	free(oldLBS);
 
-	pthread_mutex_lock(&lock);
+
+	//TODO: Refazer isto tudo
+	/*pthread_mutex_lock(&lock);
 	HttpRequestNode ** newList = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
 	HttpRequestNode ** newTail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
 	for(i = 0; i < state.numLB; i++){
@@ -74,7 +76,7 @@ void addNewLB(int id, char *ip){
 	state.lbs[i].ip = (char *) malloc(sizeof(char)*(strlen(ip)+1));
 	memcpy(state.lbs[i].ip, ip, strlen(ip)*sizeof(char));
 	state.lbs[i].ip[strlen(ip)] = '\0';
-	state.lbs[i].id = id;
+	state.lbs[i].id = id;*/
 
 	int * newSusp, * newAsusp, * newRestart;
 
@@ -112,7 +114,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	// create struct for ip header
 	struct iphdr *iph = (struct iphdr*) buffer;
 	unsigned short iphdrlen = iph->ihl*4;
-	
+	int i;
+
 	if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
@@ -126,12 +129,16 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 				state.susp[lbid] = 0;
 				state.asusp[lbid] = 0;
 
-				pthread_mutex_lock(&lock);
-				if(state.list[lbid] != NULL)
-					cleanList(state.list[lbid]);
-				state.list[lbid] = NULL;
-				state.tail[lbid] = NULL;
-				pthread_mutex_unlock(&lock);
+				for(i = 0; i < SEARCH_THREADS_NUM; i++){
+					pthread_mutex_lock(&searchLocks[i]);
+		
+					if(state.list[i][lbid] != NULL)
+						cleanList(state.list[i][lbid]);
+					state.list[i][lbid] = NULL;
+					state.tail[i][lbid] = NULL;
+	
+					pthread_mutex_unlock(&searchLocks[i]);
+				}
 
 			}
 			else if(lbid == state.numLB){
@@ -224,10 +231,11 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	compute_ip_checksum(iph);
 	
 	if(amWhatcher(lb, state.numLB)){
-		pthread_mutex_lock(&lock);
-		addToList(lb, recv_len, buffer, server);
+		int t = counter%SEARCH_THREADS_NUM;
+		pthread_mutex_lock(&searchLocks[t]);
+		addToList(t, lb, recv_len, buffer, server);
 		lcount[lb]++;
-		pthread_mutex_unlock(&lock);
+		pthread_mutex_unlock(&searchLocks[t]);
 	}
 	
 	if(lb == config.id)
@@ -285,14 +293,14 @@ int main(int argc, char **argv){
     	if(pthread_mutex_init(&searchLocks[i], NULL) != 0)
         	die("search mutex init failed");
         //search lists
-        searchList[i] = NULL;
+        //searchList[i] = NULL;
         if(pthread_create(&searchThreads[i], &attr, checkList, NULL) == -1)
         	die("unable to create search thread");
     }
 	
     // init mutex 
-	if (pthread_mutex_init(&lock, NULL) != 0)
-        die("mutex init failed");
+	//if (pthread_mutex_init(&lock, NULL) != 0)
+      //  die("mutex init failed");
 
 	int ret = pthread_create(&thread, &attr, bloomChecker, NULL);
 	if(ret == -1)
@@ -511,29 +519,30 @@ void die(char *error){
 			nfq_close(h);
 		h = NULL;
 
-		pthread_mutex_destroy(&lock);
+		//pthread_mutex_destroy(&lock);
 	}
 	
-	//printf("exit...\n");
 	pthread_exit(NULL);
 	//exit(1);
 }
 
 void resetState() {
-	int i;
-	for(i = 0; i < state.numLB; i++){
-		state.susp[i] = 0;
-		state.asusp[i] = 0;
+	int i, j;
+	for(i = 0; i < SEARCH_THREADS_NUM; i++){
+		pthread_mutex_lock(&searchLocks[i]);
+		for(j = 0; j < state.numLB; j++){
+			state.susp[j] = 0;
+			state.asusp[j] = 0;
 
-		pthread_mutex_lock(&lock);
-		if(state.list[i] != NULL)
-			cleanList(state.list[i]);
-		state.list[i] = NULL;
-		state.tail[i] = NULL;
-		pthread_mutex_unlock(&lock);
-
-		if(state.restart != NULL)
-			state.restart[i] = 0;
+			if(state.list[i][j] != NULL)
+				cleanList(state.list[i][j]);
+			state.list[i][j] = NULL;
+			state.tail[i][j] = NULL;
+			
+			if(state.restart != NULL)
+				state.restart[j] = 0;
+		}
+		pthread_mutex_unlock(&searchLocks[i]);
 	}
 }
 
@@ -544,13 +553,17 @@ void clearState() {
 	state.servers = NULL;
 	state.susp = NULL;
 	state.asusp = NULL;
-	state.list = NULL;
-	state.tail = NULL;
+	int i = 0;
+	for(i = 0; i < SEARCH_THREADS_NUM; i++){
+		state.list[i] = NULL;
+		state.tail[i] = NULL;
+	}
+	
 	state.restart = NULL;
 }
 
 void cleanState() {
-	int i;
+	int i, j;
 	if(state.lbs != NULL){
 		for(i = 0; i < state.numLB; i++){
 			if(state.lbs[i].ip != NULL)
@@ -561,20 +574,18 @@ void cleanState() {
 	}		
 	state.lbs = NULL;
 	
-	pthread_mutex_lock(&lock);
-	if(state.list != NULL){
-		for(i = 0; i < state.numLB; i++){
-			if(state.list[i] != NULL)
-				cleanList(state.list[i]);
-			state.list[i] = NULL;
-			state.tail[i] = NULL;
+	for(i = 0; i < SEARCH_THREADS_NUM; i++){
+		pthread_mutex_lock(&searchLocks[i]);
+		for(j = 0; j < state.numLB; j++){
+			if(state.list[i][j] != NULL)
+				cleanList(state.list[i][j]);
+			state.list[i][j] = NULL;
+			state.tail[i][j] = NULL;
 		}
-		free(state.list);
-		free(state.tail);
+		free(state.list[i]);
+		free(state.tail[i]);
+		pthread_mutex_unlock(&searchLocks[i]);
 	}
-	state.list = NULL;
-	state.tail = NULL;
-	pthread_mutex_unlock(&lock);
 	
 	if(state.servers != NULL){
 		for(i = 0; i < state.numServers; i++){
