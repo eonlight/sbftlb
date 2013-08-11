@@ -56,7 +56,6 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 	
 	// create struct for tcp header
 	unsigned short iphdrlen = iph->ihl*4;
-	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
 	
 	if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
@@ -80,8 +79,10 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 	}
 
+	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
+
 	// IF OUTPUT
-	if(ntohs(tcph->source) == config.serverPort) {
+	/*if(ntohs(tcph->source) == config.serverPort) {
 
 		// Change sport
 		tcph->source = htons(config.frontPort);
@@ -97,7 +98,7 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 		id = ntohl(ph->packet_id);
 	
 		return nfq_set_verdict(qh, id, NF_ACCEPT, ntohs(iph->tot_len), (unsigned char *)buffer);
-	}
+	}*/
 	
 	// ELSE IF INPUT
 	int lb = -1;
@@ -110,15 +111,17 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 	tot_len = ntohs(iph->tot_len);
 	buffer[tot_len] = '\0';
 
+	iph->daddr = inet_addr(config.frontEnd);
+
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 
-	if(lb >= 0 && lb < state.numLB)// && ((unsigned int)tcph->syn) != 1)
-		addToFilter((char *)buffer, lb, tot_len);
+	//if(lb >= 0 && lb < state.numLB)// && ((unsigned int)tcph->syn) != 1)
+		//addToFilter((char *)buffer, lb, tot_len);
 
 	/* TEST | INFOR VARS */
-	count[lb]++;
-	counter++;
+	//count[lb]++;
+	//counter++;
 	/******** END ********/
 
 	// Default: accept packets
@@ -161,10 +164,10 @@ int main(int argc, char **argv){
 	close(rs);
 	
 	//create bloom filter thread
-	int ret = pthread_create(&thread, NULL, bloomThread, NULL);
+	/*int ret = pthread_create(&thread, NULL, bloomThread, NULL);
 	if(ret == -1)
 		die("unable to create thread");
-	
+	*/
 	int fd, rv;
 	char buf[4096] __attribute__ ((aligned));
 

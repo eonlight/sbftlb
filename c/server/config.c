@@ -268,12 +268,12 @@ void addIptablesRules(){
 		execvp("iptables", args);
 	}
 
-	if (fork() == 0) {
+	/*if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "mangle", "-A", "POSTROUTING", 
 						"-p", "tcp", "--sport", port, 
 						"-j", "NFQUEUE", "--queue-num", "1", NULL};
 		execvp("iptables", args);
-	}
+	}*/
 
 	plen = floor(log10(abs(config.helloPort))) + 1;
 	char hport[plen+1];

@@ -81,7 +81,7 @@ char * createBloomBuffer(LBBloom *bloom){
 	int ilen = sizeof(int), blen = sizeof(char)*bloom->bloom->bytes;
 	char * buffer = (char *) calloc(sizeof(char), ilen*3+blen+1);
 
-	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
+	//printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
 	//printf("Sending %d to %d, %d with %d packets - %08X\n", bloom->lb, (bloom->lb+1)%3, (bloom->lb+2)%3, bloom->packets, MurmurHash2(bloom->bloom->bf, blen, 0x00));
 	
 	memcpy(buffer, &(bloom->lb), ilen);

@@ -6,9 +6,13 @@
 
 #include <string.h>
 
-int count[] = {0,0,0};
-int lcount[] = {0,0,0};
-int counter = 0;
+//int count[] = {0,0,0};
+//int lcount[] = {0,0,0};
+//int counter = 0;
+int bags = 0;
+
+int faults[] = {0,0,0};
+
 
 #include "hashs.c"
 #include "httpreqlist.c"
@@ -37,15 +41,24 @@ void addNewServer(int id, char *ip){
 	newServers[state.numServers].ip[strlen(ip)] = '\0';
 	newServers[state.numServers].id = id;
 	state.servers = newServers;
-
 	free(old);
+
+	/*
+	TODO acrescenter serevr à list
+	int i, server;
+	for(i = 0; i < state.numLB; i++)
+		for(server = 0; server < state.numServers; server++){
+
+		}
+
+	*/
 
 	state.numServers++;
 
 }
 
 void addNewLB(int id, char *ip){
-	int i;
+	//int i, server;
 
 	LoadBalancer *newLBS = (LoadBalancer *) malloc(sizeof(LoadBalancer)*(state.numLB+1));
 	memcpy(newLBS, state.lbs, sizeof(LoadBalancer)*state.numLB);
@@ -53,15 +66,19 @@ void addNewLB(int id, char *ip){
 	state.lbs = newLBS;
 	free(oldLBS);
 
-	pthread_mutex_lock(&lock);
+	/*pthread_mutex_lock(&lock);
 	HttpRequestNode ** newList = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
 	HttpRequestNode ** newTail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
-	for(i = 0; i < state.numLB; i++){
-		newList[i] = state.list[i];
-		newTail[i] = state.tail[i];
+	for(i = 0; i < state.numLB; i++)
+		for(server = 0; server < state.numServers; server++){
+			newList[i][server] = state.list[i][server];
+			newTail[i][server] = state.tail[i][server];
+		}
+
+	for(server = 0; server < state.numServers; server++){
+		newList[i][server] = NULL;
+		newTail[i][server] = NULL;
 	}
-	newList[i] = NULL;
-	newTail[i] = NULL;
 
 	HttpRequestNode ** oldList = state.list;
 	HttpRequestNode ** oldTail = state.tail;
@@ -74,7 +91,7 @@ void addNewLB(int id, char *ip){
 	state.lbs[i].ip = (char *) malloc(sizeof(char)*(strlen(ip)+1));
 	memcpy(state.lbs[i].ip, ip, strlen(ip)*sizeof(char));
 	state.lbs[i].ip[strlen(ip)] = '\0';
-	state.lbs[i].id = id;
+	state.lbs[i].id = id;*/
 
 	int * newSusp, * newAsusp, * newRestart;
 
@@ -126,12 +143,13 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 				state.susp[lbid] = 0;
 				state.asusp[lbid] = 0;
 
-				pthread_mutex_lock(&lock);
+				//TODO: acrescentar [server]
+				/*pthread_mutex_lock(&lock);
 				if(state.list[lbid] != NULL)
 					cleanList(state.list[lbid]);
 				state.list[lbid] = NULL;
 				state.tail[lbid] = NULL;
-				pthread_mutex_unlock(&lock);
+				pthread_mutex_unlock(&lock);*/
 
 			}
 			else if(lbid == state.numLB){
@@ -223,18 +241,18 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 	
-	if(amWhatcher(lb, state.numLB)){
+	/*if(amWhatcher(lb, state.numLB)){
 		pthread_mutex_lock(&lock);
 		addToList(lb, recv_len, buffer, server);
-		lcount[lb]++;
+		//lcount[lb]++;
 		pthread_mutex_unlock(&lock);
-	}
+	}*/
 	
 	if(lb == config.id)
 		sendPacket(iph, tcph, buffer, config.id);
 
-	count[lb]++;
-	counter++;
+	//count[lb]++;
+	//counter++;
 	// Default: drop packets
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
@@ -296,10 +314,10 @@ int main(int argc, char **argv){
 
 	close(rs);
 	
-	int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
+	/*int ret = pthread_create(&thread, NULL, bloomChecker, NULL);
 	if(ret == -1)
 		die("unable to create thread");
-	
+	*/
 	int fd, rv;
 	
 	char buf[4096] __attribute__ ((aligned));
@@ -381,6 +399,10 @@ int isFaulty(int lb){
 void markFaulty(int lb){
 	printf("---->>> %d says LB%d is faulty <<<----\n", config.id, lb);
 	
+	state.susp[lb] = 0;
+	state.asusp[lb] = 0;
+	faults[lb]++;
+
 	// send restart request to faulty replica
 	/*int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -450,6 +472,8 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 	
+	//printf("sending\n");
+
 	if ((err = sendto(s, newb, ntohs(iph->tot_len),0,(struct sockaddr *)&to, sizeof(to))) < 0)
 		die("forwarder - sendPacekt: send");
 
@@ -469,9 +493,8 @@ void die(char *error){
 
 	
 	pthread_join(thread, NULL);
-	pthread_mutex_destroy(&lock);
 
-	printf("L0: %d | L1: %d | L2: %d | T: %d \n", count[0], count[1], count[2], counter);
+	printf("L0: %d | L1: %d | L2: %d \n", faults[0], faults[1], faults[2]);
 
 	if(newts != -1)
 		close(newts);
@@ -491,6 +514,8 @@ void die(char *error){
 	cleanConfigs();
 	clearConfigs();
 
+	pthread_mutex_destroy(&lock);
+
 	if(qh != NULL)
 		nfq_destroy_queue(qh);
 	qh = NULL;
@@ -508,12 +533,13 @@ void resetState() {
 		state.susp[i] = 0;
 		state.asusp[i] = 0;
 
-		pthread_mutex_lock(&lock);
+		// [server]
+		/*pthread_mutex_lock(&lock);
 		if(state.list[i] != NULL)
 			cleanList(state.list[i]);
 		state.list[i] = NULL;
 		state.tail[i] = NULL;
-		pthread_mutex_unlock(&lock);
+		pthread_mutex_unlock(&lock);*/
 
 		if(state.restart != NULL)
 			state.restart[i] = 0;
@@ -544,7 +570,8 @@ void cleanState() {
 	}		
 	state.lbs = NULL;
 	
-	pthread_mutex_lock(&lock);
+	//[server]
+	/*pthread_mutex_lock(&lock);
 	if(state.list != NULL){
 		for(i = 0; i < state.numLB; i++){
 			if(state.list[i] != NULL)
@@ -557,7 +584,7 @@ void cleanState() {
 	}
 	state.list = NULL;
 	state.tail = NULL;
-	pthread_mutex_unlock(&lock);
+	pthread_mutex_unlock(&lock);*/
 	
 	if(state.servers != NULL){
 		for(i = 0; i < state.numServers; i++){

@@ -7,6 +7,7 @@ typedef struct request_node{
   time_t added;
   int len; //length of the buffer
   int blooms; //num blooms received
+  int bag;
   struct request_node *next;
   struct request_node *prev;
 } HttpRequestNode;

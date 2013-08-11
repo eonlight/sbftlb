@@ -4,47 +4,47 @@
 #include "thread.h"
 
 // add to the head
-void addListToList(int lb, HttpRequestNode *head, HttpRequestNode *tail){
-	if(state.list[lb] == NULL){
-		state.list[lb] = head;
-		//state.tail[lb] = tail;
+void addListToList(int lb, int server, HttpRequestNode *head, HttpRequestNode *tail){
+	if(state.list[lb][server] == NULL){
+		state.list[lb][server] = head;
+		state.tail[lb][server] = tail;
 	}
 	else {
-		tail->next = state.list[lb];
-		state.list[lb]->prev = tail;
-		state.list[lb] = head;
+		tail->next = state.list[lb][server];
+		state.list[lb][server]->prev = tail;
+		state.list[lb][server] = head;
 	}
 }
 
-void checkFilter(LBBloom * bloom){
+void checkFilter(LBBloom * bloom, int now, int bag){
 	
 	int lb = bloom->lb;
 	int server = bloom->server;
 
 	// if I saw LBi packets
-	if(state.list[lb] != NULL){
+	if(state.list[lb][server] != NULL){
 		
 		pthread_mutex_lock(&lock);
-		HttpRequestNode *current = state.list[lb];
-		state.list[lb] = NULL;
-		int nlist = lcount[lb];
+		HttpRequestNode *current = state.list[lb][server];
+		state.list[lb][server] = NULL;
+		//int nlist = lcount[lb];
 		pthread_mutex_unlock(&lock);
 
 		HttpRequestNode *head = NULL;
 		HttpRequestNode *tail = NULL;
 
 		do {
-			if(current->server == server && checkBloom(bloom->bloom, current->buffer, current->len)){
+			if(checkBloom(bloom->bloom, current->buffer, current->len)){
 				if(state.asusp[lb] > 0)
 					state.asusp[lb]--;
 
 				bloom->packets--;
 				current = removeFromList(current);
-				lcount[lb]--;
+				//lcount[lb]--;
 
 			}
-			else if(current->server == server && current->added+fconfig.TIMEOUT < time(0)){
-				printf("<<<<<<<<<< timeout: %d >>>>>>>>>>>>\n", nlist);
+			else if(current->added+fconfig.TIMEOUT < now){
+				printf(">>>>>>>>>>>>>>>>>> timeout on bag %d, received on %d, lb %d server %d >>>>>>>>>>>>\n", bag, current->bag, lb, server);
 				state.susp[lb]++;
 				state.asusp[lb]++;
 				// Create structs pointers
@@ -52,7 +52,7 @@ void checkFilter(LBBloom * bloom){
 				//struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
 				//sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
 				current = removeFromList(current);
-				lcount[lb]--;
+				//lcount[lb]--;
 			}
 			else {
 				if(head == NULL)
@@ -65,7 +65,7 @@ void checkFilter(LBBloom * bloom){
 
 		if(head != NULL){
 			pthread_mutex_lock(&lock);
-			addListToList(lb, head, tail);
+			addListToList(lb, server, head, tail);
 			pthread_mutex_unlock(&lock);
 		}
 	}
@@ -116,7 +116,7 @@ LBBloom * readBloom(char *buf) {
 	memcpy(lbb->bloom->bf, buf+3*ilen, blen);
 
 	//printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, count[lb], MurmurHash2(lbb->bloom->bf, blen, 0x00));
-	printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
+	//printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
 
 	return lbb;
 }
@@ -161,13 +161,16 @@ void * bloomChecker(void *arg){
 		int r = 0;
 		while(r < blen)
 			r += read(newts, buffer+r, blen);
+		int now = time(0);
+		bags++;
 
 		LBBloom * lbb = readBloom(buffer);
 
 		/* TODO: THREADS!!!!! */
 		/* checkfilter -> function thread */
 		/* new function, locks[num_threads], check_list[num_threads] */
-		checkFilter(lbb);
+		//TODO: 1 thread so a fazer isto
+		checkFilter(lbb, now, bags);
 
 		close(newts);
 

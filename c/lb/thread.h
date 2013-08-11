@@ -13,7 +13,7 @@ typedef struct {
 int ts;
 
 void * bloomChecker(void *arg);
-void checkFilter(LBBloom * bloom);
+void checkFilter(LBBloom * bloom, int now, int bag);
 LBBloom * readBloom(char *buf);
 
 #endif

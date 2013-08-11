@@ -41,18 +41,19 @@ HttpRequestNode * removeFromList(HttpRequestNode * current){
 
 void addToList(int lb, int len, unsigned char * buffer, int server){
 
-	if(state.list[lb] == NULL){
-		state.list[lb] = (HttpRequestNode *) malloc(sizeof(HttpRequestNode));
-		state.list[lb]->buffer = (char *) malloc (sizeof(char)*(len+1));
-		memcpy(state.list[lb]->buffer, buffer, len);
-		state.list[lb]->next = NULL;
-		state.list[lb]->prev = NULL;
-		state.list[lb]->server = server;
-		state.list[lb]->added = time(0);
-		state.list[lb]->len = len;
-		state.list[lb]->blooms = 0;
-		state.list[lb]->buffer[len] = '\0';
-		state.tail[lb] = state.list[lb];
+	if(state.list[lb][server] == NULL){
+		state.list[lb][server] = (HttpRequestNode *) malloc(sizeof(HttpRequestNode));
+		state.list[lb][server]->buffer = (char *) malloc (sizeof(char)*(len+1));
+		memcpy(state.list[lb][server]->buffer, buffer, len);
+		state.list[lb][server]->next = NULL;
+		state.list[lb][server]->prev = NULL;
+		state.list[lb][server]->server = server;
+		state.list[lb][server]->added = time(0);
+		state.list[lb][server]->len = len;
+		state.list[lb][server]->blooms = 0;
+		state.list[lb][server]->bag = bags;
+		state.list[lb][server]->buffer[len] = '\0';
+		state.tail[lb][server] = state.list[lb][server];
 	}
 	else {
 		/*
@@ -76,7 +77,7 @@ void addToList(int lb, int len, unsigned char * buffer, int server){
 		*/
 
 
-		HttpRequestNode *current = state.tail[lb];
+		HttpRequestNode *current = state.tail[lb][server];
 	
 		/*while(current->next != NULL)
 			current = current->next;*/
@@ -89,12 +90,14 @@ void addToList(int lb, int len, unsigned char * buffer, int server){
 		
 		current->next->server = server;
 		current->next->blooms = 0;
+		current->next->bag = bags;
+
 		current->next->added = time(0);
 		current->next->len = len;
 		
 		current->next->next = NULL;
 		current->next->prev = current;
 
-		state.tail[lb] = current->next;
+		state.tail[lb][server] = current->next;
 	}	
 }

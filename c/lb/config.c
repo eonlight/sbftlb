@@ -165,10 +165,19 @@ void parseLine(char *line, int l){
 				state.numServers = atoi(current);
 				
 				state.servers = (Server *) malloc(sizeof(Server)*state.numServers);
-				
 				for(i = 0; i < state.numServers; i++){
 					state.servers[i].ip = NULL;
 					state.servers[i].id = i;
+				}
+
+				int server;
+				for(i = 0; i < state.numLB; i++){
+					state.list[i] = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
+					state.tail[i] = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
+					for(server = 0; server < state.numServers; server++){
+						state.list[i][server] = NULL;
+						state.tail[i][server] = NULL;
+					}
 				}
 					
 				return;
@@ -188,8 +197,8 @@ void parseLine(char *line, int l){
 				state.numLB = atoi(current);
 				
 				state.lbs = (LoadBalancer *) malloc(sizeof(LoadBalancer)*state.numLB);
-				state.list = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
-				state.tail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*state.numLB);
+				state.list = (HttpRequestNode ***) malloc(sizeof(HttpRequestNode **)*state.numLB);
+				state.tail = (HttpRequestNode ***) malloc(sizeof(HttpRequestNode **)*state.numLB);
 				
 				for(i = 0; i < state.numLB; i++){
 					state.lbs[i].ip = NULL;

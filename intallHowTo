@@ -6,19 +6,23 @@ gcc -Wall -o dropper dropper.c -lnfnetlink -lnetfilter_queue
 
 Install Httpd:
 
-tar xvf clean-src-httpd.tar.gz 
+wget https://dl.dropboxusercontent.com/u/7038846/httpd-src.zip
+unzip httpd-src.zip
+cd httpd-src
+
+unzip clean-src-httpd.zip
 cd httpd-2.4.3
 apt-get install libpcre3-dev
 ./configure --prefix=/home/ruben/tese/httpd --with-include-apr
 make
 make install
 cd ..
-tar xvf balancers.tar.gz 
+unzip balancers.zip
 cp balanacers/* httpd-2.4.3/modules/proxy/balancers/
 cd httpd-2.4.3/modules/proxy/balancers/
 make clean
 make
 make install
 cd ../../../..
-tar xvf conf.tar.gz 
-cp *.conf ~/tese/httpd/conf
+unzip conf.zip
+cp *.conf /home/ruben/tese/httpd/conf

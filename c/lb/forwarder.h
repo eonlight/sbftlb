@@ -40,8 +40,8 @@ typedef struct {
 	Server *servers;
 	int *susp;
 	int *asusp;
-	HttpRequestNode **list;
-	HttpRequestNode **tail;
+	HttpRequestNode ***list;
+	HttpRequestNode ***tail;
 	int *restart;
 } State;
 
