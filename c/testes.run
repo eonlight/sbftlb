@@ -1,0 +1,46 @@
+
+echo "starting..."
+echo "0%..."
+echo "# 100 000" >> sbftlb_results.txt
+weighttp -n 100000 -c 100 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 100000 -c 200 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "12%..."
+weighttp -n 100000 -c 400 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 100000 -c 800 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "25%..."
+echo "# 200 000" >> sbftlb_results.txt
+weighttp -n 200000 -c 100 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 200000 -c 200 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "37%..."
+weighttp -n 200000 -c 400 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 200000 -c 800 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "50%..."
+echo "# 300 000" >> sbftlb_results.txt
+weighttp -n 300000 -c 100 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 300000 -c 200 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "63%..."
+weighttp -n 300000 -c 400 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 300000 -c 800 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "75%..."
+echo "# 1 000 000" >> sbftlb_results.txt
+weighttp -n 1000000 -c 100 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 1000000 -c 200 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+echo "87%..."
+weighttp -n 1000000 -c 400 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+sleep 90
+weighttp -n 1000000 -c 800 -t 16 -k "http://192.168.7.100:5555/i100.html" >> sbftlb_results.txt
+echo "100%..."
