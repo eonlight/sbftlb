@@ -3,9 +3,24 @@
 # 1 thread aguenta 30000 pacotes +/-
 # 10 = 300000
 
+#tests
+if [ $1 -eq 50 ]; then
+echo "Coping lbs to s3"
+sshpass -p fabiim scp lb/*.c s3.quinta:/home/ruben/SBFTLB/
+sshpass -p fabiim scp lb/*.h s3.quinta:/home/ruben/SBFTLB/
+echo "Coping server to s5"
+sshpass -p fabiim scp server/*.c  s5.quinta:~/ruben
+sshpass -p fabiim scp server/*.h  s5.quinta:~/ruben
+fi
+
 if [ $1 -eq 20 ]; then
 echo "Coping $2 to s5"
 sshpass -p fabiim scp $2 s5.quinta:~/ruben
+fi
+
+if [ $1 -eq 30 ]; then
+echo "Coping $2 to s3"
+sshpass -p fabiim scp $2 s3.quinta:/home/ruben/SBFTLB/
 fi
 
 if [ $# -eq 2 ] && [ $1 -eq 0 ]; then

@@ -2,23 +2,39 @@
 #include "config.h"
 
 void addIptablesRules(){
-	/* clear iptables */
+
+	/* iptables -vxL -t raw */
+	char buffer[1024];
+	sprintf(buffer, "iptables -t raw -F");
+	if(system(buffer) == -1)
+		die("failed to clean iptables");
+
+	sprintf(buffer, "iptables -t raw -A PREROUTING -p tcp --dport %d -d %s -j NFQUEUE --queue-num 1", 
+			config.frontPort, config.frontEnd);
+	if(system(buffer) == -1)
+		die("failed to add rule in");
+
+	//TODO: REVER ESTA REGRA
+	sprintf(buffer, "iptables -t raw -A PREROUTING -p udp --dport %d -d %s -j NFQUEUE --queue-num 1", 
+			config.helloPort, config.frontEnd);
+	if(system(buffer) == -1)
+		die("failed to add rule hello");
+
+	/* clear iptables
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-F", NULL};
 		execvp("iptables", args);
 	}
 	
-	/* add arp rule for front_end ff:ff:ff:ff:ff:ff */
-	/*if(fork() == 0){
+	//add arp rule for front_end ff:ff:ff:ff:ff:ff
+	if(fork() == 0){
 		char *args[] = {"arp", "-s", config.frontEnd, "ff:ff:ff:ff:ff:ff", NULL};
 		execvp("arp", args);
-	}*/
+	}
 	
 	sleep(1);
-	
-	/* iptables -vxL -t raw */
 
-	/* add rules */
+	// add rules
 	int plen = floor(log10(abs(config.frontPort))) + 1;
 	char port[plen+1];
 	sprintf(port, "%d", config.frontPort);
@@ -45,7 +61,7 @@ void addIptablesRules(){
 						config.frontEnd, "-j", "NFQUEUE", 
 						"--queue-num", "1", NULL};
 		execvp("iptables", args);
-	}
+	}*/
 }
 
 /* resets the configs */

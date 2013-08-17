@@ -6,18 +6,30 @@
 
 #include <string.h>
 
-int counter = 0;
-int count[] = {0,0,0};
+#include <unistd.h>
+#include <netinet/in.h>
+#include <linux/types.h>
+#include <linux/netfilter.h> // for NF_ACCEPT
+#include <libnetfilter_queue/libnetfilter_queue.h>
 
-#include "hash.c"
+#include <netinet/ip.h>	// Provides declarations for ip header
+#include <netinet/tcp.h> // Provides declarations for tcp header
 
-#include "mask.h"
-#include "config.c"
-#include "packets.c"
+#include <string.h> // memset
+#include <arpa/inet.h> // sockets
 
-#include "thread.c"
+//int counter = 0;
+//int count[] = {0,0,0};
 
-void addToFilter(char * buffer, int id, int size){
+//#include "hash.c"
+
+//#include "mask.h"
+//#include "config.c"
+//#include "packets.c"
+
+//#include "thread.c"
+
+/*void addToFilter(char * buffer, int id, int size){
 	pthread_mutex_lock(&lock);
 	if(state.blooms != NULL && state.blooms[id] != NULL && state.blooms[id]->bloom != NULL){
 		addToBloom(state.blooms[id]->bloom, buffer, size);
@@ -40,7 +52,15 @@ void addNewLB(int id, char *ip){
 	state.lbs[state.numLB].id = id;
 
 	state.numLB++;
+}*/
+
+void die(char * s){
+	exit(0);
 }
+
+struct nfq_handle *h = NULL;
+struct nfq_q_handle *qh = NULL;
+int end = 0;
 
 int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data){
 	
@@ -52,12 +72,12 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 	int id = ntohl(ph->packet_id);
 
 	// create struct for ip header
-	struct iphdr *iph = (struct iphdr*) buffer;
+	//struct iphdr *iph = (struct iphdr*) buffer;
 	
 	// create struct for tcp header
-	unsigned short iphdrlen = iph->ihl*4;
+	//unsigned short iphdrlen = iph->ihl*4;
 	
-	if(iph->protocol == UDP_PROTO){
+	/*if(iph->protocol == UDP_PROTO){
     	struct udphdr *udph = (struct udphdr*)(buffer + iphdrlen);
     	char * pl = (char *) buffer + iphdrlen + sizeof(udph);
     	
@@ -77,9 +97,9 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 		}
 
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-	}
+	}*/
 
-	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
+	//struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
 
 	// IF OUTPUT
 	/*if(ntohs(tcph->source) == config.serverPort) {
@@ -101,7 +121,7 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 	}*/
 	
 	// ELSE IF INPUT
-	int lb = -1;
+	/*int lb = -1;
 	int add_len = sizeof(int);
 
 	int tot_len = ntohs(iph->tot_len);
@@ -111,43 +131,40 @@ int handlePacket(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_dat
 	tot_len = ntohs(iph->tot_len);
 	buffer[tot_len] = '\0';
 
-	iph->daddr = inet_addr(config.frontEnd);
+	//iph->daddr = inet_addr(config.frontEnd);
 
 	compute_tcp_checksum(iph, (unsigned short*)tcph);
 	compute_ip_checksum(iph);
 
-	//if(lb >= 0 && lb < state.numLB)// && ((unsigned int)tcph->syn) != 1)
-		//addToFilter((char *)buffer, lb, tot_len);
+	if(lb >= 0 && lb < state.numLB)// && ((unsigned int)tcph->syn) != 1)
+		addToFilter((char *)buffer, lb, tot_len);*/
 
 	/* TEST | INFOR VARS */
 	//count[lb]++;
 	//counter++;
 	/******** END ********/
 
+
 	// Default: accept packets
-	return nfq_set_verdict(qh, id, NF_ACCEPT, ntohs(iph->tot_len), (unsigned char *)buffer);
+	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL); //ntohs(iph->tot_len), (unsigned char *)buffer);
 }
 
 int main(int argc, char **argv){
-
-	if(argc < 2){
-		printf("Usage: %s [config file]\n", argv[0]);
-		die("no config file");
-	}
-	
+	//	clearConfigs();
+	//	clearState();
 	// init mutex 
-	if (pthread_mutex_init(&lock, NULL) != 0)
-        die("mutex init failed");
+	//if (pthread_mutex_init(&lock, NULL) != 0)
+        //die("mutex init failed");
 	
-	signal(SIGINT, terminate);
-	signal(SIGTERM, terminate);
-	signal(SIGKILL, terminate);
+	//signal(SIGINT, terminate);
+	//signal(SIGTERM, terminate);
+	//signal(SIGKILL, terminate);
 	
-	readConfig(argv[1]);	
-	addIptablesRules();
+	//readConfig(argv[1]);	
+	//addIptablesRules();
 
 	// HELLO protocol for Servers
-	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	/*int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	struct sockaddr_in all;
 	all.sin_family = AF_INET;
@@ -161,13 +178,13 @@ int main(int argc, char **argv){
 	hello[sizeof(int)*2] = '\0';
 
 	sendto(rs, (const char*) hello, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
-	close(rs);
+	close(rs);*/
 	
 	//create bloom filter thread
 	/*int ret = pthread_create(&thread, NULL, bloomThread, NULL);
 	if(ret == -1)
-		die("unable to create thread");
-	*/
+		die("unable to create thread");*/
+	
 	int fd, rv;
 	char buf[4096] __attribute__ ((aligned));
 
@@ -199,7 +216,7 @@ int main(int argc, char **argv){
 	printf("All set!\n");
 	while (end != 1){
 		rv = recv(fd, buf, sizeof(buf), 0);
-		if(rv >= 0)
+		//if(rv >= 0)
 			nfq_handle_packet(h, buf, rv);
 	}
 	
@@ -222,26 +239,26 @@ int main(int argc, char **argv){
 	h = NULL;
 	
 	// closing socket
-	if(s != -1)
+	/*if(s != -1)
 		close(s);
 	s = -1;
-	
+	*/
 	die("Done!\n");
 	return 0;
 }
 
 // when a signal is catched
-void terminate(int sig){
-	pthread_kill(thread, sig);
+/*void terminate(int sig){
+	//pthread_kill(thread, sig);
 	die(strsignal(sig));
-}
-
+}*/
+/*
 void die(char *error){
 	end = 1;
 	sleep(1);
 
-	pthread_join(thread, NULL);
-	pthread_mutex_destroy(&lock);
+	//pthread_join(thread, NULL);
+	//pthread_mutex_destroy(&lock);
 
 	if(qh != NULL)
 		nfq_destroy_queue(qh);
@@ -252,15 +269,18 @@ void die(char *error){
 	h = NULL;
 	
 	cleanConfigs();
+	clearConfigs();
+
 	cleanState();
+	clearState();
 
 	if(s != -1)
 		close(s);
 	s= -1;
 
-	if(ts != -1)
-		close(ts);
-	ts = -1;
+	//if(ts != -1)
+	//	close(ts);
+	//ts = -1;
 	
 	perror(error);
 	exit(1);
@@ -311,4 +331,4 @@ void cleanState() {
 		free(state.blooms);
 	}
 	state.blooms = NULL;
-}
+}*/

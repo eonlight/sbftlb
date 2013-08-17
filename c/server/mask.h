@@ -42,8 +42,6 @@ typedef struct {
 	LBBloom **toSend;
 } State;
 
-// socket vars
-int s, err, on = 1;
 
 // Thread vars
 pthread_t thread;

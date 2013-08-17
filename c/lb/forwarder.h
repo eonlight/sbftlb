@@ -75,7 +75,7 @@ int isFaulty(int lb);
 void markFaulty(int lb);
 int amWhatcher(int lb, int num);
 
-void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer, int lb);
+void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer, int lb, int server);
 
 void die(char *error);
 void terminate(int sig);

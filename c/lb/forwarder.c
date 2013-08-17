@@ -6,9 +6,9 @@
 
 #include <string.h>
 
-//int count[] = {0,0,0};
-//int lcount[] = {0,0,0};
-//int counter = 0;
+int count[] = {0,0,0};
+int lcount[] = {0,0,0};
+int counter = 0;
 int bags = 0;
 
 int faults[] = {0,0,0};
@@ -43,9 +43,9 @@ void addNewServer(int id, char *ip){
 	state.servers = newServers;
 	free(old);
 
-	/*
-	TODO acrescenter serevr à list
-	int i, server;
+	// change to beign comment
+	//TODO acrescenter serevr à list
+	/* int i, server;
 	for(i = 0; i < state.numLB; i++)
 		for(server = 0; server < state.numServers; server++){
 
@@ -54,7 +54,6 @@ void addNewServer(int id, char *ip){
 	*/
 
 	state.numServers++;
-
 }
 
 void addNewLB(int id, char *ip){
@@ -66,6 +65,7 @@ void addNewLB(int id, char *ip){
 	state.lbs = newLBS;
 	free(oldLBS);
 
+	// change to beign comment 
 	/*pthread_mutex_lock(&lock);
 	HttpRequestNode ** newList = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
 	HttpRequestNode ** newTail = (HttpRequestNode **) malloc(sizeof(HttpRequestNode *)*(state.numLB+1));
@@ -120,7 +120,8 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 
 	unsigned char *buffer;
 	// buffer[recv_len] == '\0'
-	int recv_len = nfq_get_payload(nfa, (char **) &buffer);
+	//int recv_len = 
+	nfq_get_payload(nfa, (char **) &buffer);
 
 	// Get package queue id
 	struct nfqnl_msg_packet_hdr *ph = nfq_get_msg_packet_hdr(nfa);
@@ -144,13 +145,13 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 				state.asusp[lbid] = 0;
 
 				//TODO: acrescentar [server]
-				/*pthread_mutex_lock(&lock);
+				/* change to beign comment
+				pthread_mutex_lock(&lock);
 				if(state.list[lbid] != NULL)
 					cleanList(state.list[lbid]);
 				state.list[lbid] = NULL;
 				state.tail[lbid] = NULL;
 				pthread_mutex_unlock(&lock);*/
-
 			}
 			else if(lbid == state.numLB){
 				struct sockaddr_in source;
@@ -208,7 +209,10 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
     	
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 	}
-	
+
+	//if(iph->protocol == UDP_PROTO)
+		//return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+
 	// create struct for tcp header
 	struct tcphdr *tcph = (struct tcphdr *) (buffer + iphdrlen);
 
@@ -232,14 +236,14 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	int server = getDestination(host, sport, state.numServers);
 	
 	// Change dport
-	tcph->dest = htons(config.endPort);
+	//tcph->dest = htons(config.serverPort);
 			
 	// Change dest
-	iph->daddr = inet_addr(state.servers[server].ip);
+	//iph->daddr = inet_addr(state.servers[server].ip);
 
 	// Compute TCP checksum
-	compute_tcp_checksum(iph, (unsigned short*)tcph);
-	compute_ip_checksum(iph);
+	//compute_tcp_checksum(iph, (unsigned short*)tcph);
+	//compute_ip_checksum(iph);
 	
 	/*if(amWhatcher(lb, state.numLB)){
 		pthread_mutex_lock(&lock);
@@ -249,10 +253,10 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	}*/
 	
 	if(lb == config.id)
-		sendPacket(iph, tcph, buffer, config.id);
+		sendPacket(iph, tcph, buffer, config.id, server);
 
-	//count[lb]++;
-	//counter++;
+	count[lb]++;
+	counter++;
 	// Default: drop packets
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
@@ -264,7 +268,7 @@ int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, vo
 	TYPE 2 = Request Recover
 */
 
-int isWhatcher(int lb, int whatcher, int num){
+/*int isWhatcher(int lb, int whatcher, int num){
 	int i;
 	for(i = (lb+1)%num; i != (lb+(2*fconfig.faults))%num ; i=(i+1)%num)
 		if(whatcher == i)
@@ -275,7 +279,7 @@ int isWhatcher(int lb, int whatcher, int num){
 		
 	return 0;
 	//return (lb+1)%num <= whatcher || whatcher <= (lb+(2*fconfig.faults))%num;
-}
+}*/
 
 int main(int argc, char **argv){
 
@@ -289,7 +293,7 @@ int main(int argc, char **argv){
 	// init mutex 
 	if (pthread_mutex_init(&lock, NULL) != 0)
         die("mutex init failed");
-
+	
 	signal(SIGINT, terminate);
 	signal(SIGTERM, terminate);
 	signal(SIGKILL, terminate);
@@ -404,7 +408,8 @@ void markFaulty(int lb){
 	faults[lb]++;
 
 	// send restart request to faulty replica
-	/*int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	/* change to beign comment
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	struct sockaddr_in all;
 	all.sin_family = AF_INET;
@@ -439,28 +444,28 @@ int amWhatcher(int lb, int num){
 	//return (lb+1)%num <= config.id && (lb+2*fconfig.faults)%num >= config.id;
 }
 
-void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer, int lb){
+void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer, int lb, int server){
 	// Create addr to dest
-	to.sin_addr.s_addr = iph->daddr;
+	to.sin_addr.s_addr = inet_addr(state.servers[server].ip); //iph->daddr;
 	to.sin_port = tcph->dest;
 	
 	int addlen = sizeof(int);
 	int tot_len = ntohs(iph->tot_len);
 	
 	// create new buffer to add ID
-	if(tot_len >= 1500)
-		tot_len -= addlen;
+	//if(tot_len >= 1500)
+		//tot_len -= addlen;
 
 	unsigned char * newb = (unsigned char *) malloc(sizeof(char)*(tot_len+addlen));
 
 	memcpy(newb, buffer, tot_len);
 	// add my ID
-	memcpy(newb+tot_len, &lb, addlen);
+	//memcpy(newb+tot_len, &lb, addlen);
 	
-	tot_len+=addlen;
+	//tot_len+=addlen;
 	
 	// create struct for ip header	
-	iph = (struct iphdr*) newb;
+	//iph = (struct iphdr*) newb;
 	
 	// create struct for tcp header
 	unsigned short iphdrlen = iph->ihl*4;
@@ -475,6 +480,7 @@ void sendPacket(struct iphdr * iph, struct tcphdr * tcph, unsigned char * buffer
 	//printf("sending\n");
 
 	if ((err = sendto(s, newb, ntohs(iph->tot_len),0,(struct sockaddr *)&to, sizeof(to))) < 0)
+	//if ((err = sendto(s, buffer, ntohs(iph->tot_len),0,(struct sockaddr *)&to, sizeof(to))) < 0)
 		die("forwarder - sendPacekt: send");
 
 	free(newb);	
@@ -491,7 +497,6 @@ void die(char *error){
 
 	perror(error);
 
-	
 	pthread_join(thread, NULL);
 
 	printf("L0: %d | L1: %d | L2: %d \n", faults[0], faults[1], faults[2]);

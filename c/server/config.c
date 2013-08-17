@@ -236,8 +236,27 @@ void readConfig(char *filename){
 }
 
 void addIptablesRules(){
+
+	char buffer[1024];
+	sprintf(buffer, "iptables -t raw -F");
+	if(system(buffer) == -1)
+		die("failed to clean iptables");
+
+	sprintf(buffer, "iptables -t raw -A PREROUTING -p tcp --dport %d -j NFQUEUE --queue-num 1", config.serverPort);
+	if(system(buffer) == -1)
+		die("failed to clean add rule in");
+
+	//TODO: REVER ESTA REGRA
+	/*sprintf(buffer, "iptables -t raw -A PREROUTING -p udp --dport %d -d %s -j NFQUEUE --queue-num 1", 
+			config.helloPort, config.frontEnd);
+	if(system(buffer) == -1)
+		die("failed to clean add rule in");
+	*/
+	//char buffer = "iptables -t mangle -F";
+	//system(buffer);
+
 	// clear iptables
-	if (fork() == 0) {
+	/*if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-F", NULL};
 		execvp("iptables", args);
 	}
@@ -247,11 +266,11 @@ void addIptablesRules(){
 		execvp("iptables", args);
 	}
 
-	/* add arp rule for front_end ff:ff:ff:ff:ff:ff */
-	/*if(fork() == 0){
+	// add arp rule for front_end ff:ff:ff:ff:ff:ff
+	if(fork() == 0){
 		char *args[] = {"arp", "-s", config.frontEnd, "ff:ff:ff:ff:ff:ff", NULL};
 		execvp("arp", args);
-	}*/
+	}
 	
 	// add rules
 	int plen = floor(log10(abs(config.serverPort))) + 1;
@@ -260,7 +279,7 @@ void addIptablesRules(){
 	port[plen] = '\0';
 
 	sleep(1);
-
+	
 	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "raw", "-A", "PREROUTING", 
 						"-p", "tcp", "--dport", port, 
@@ -268,12 +287,12 @@ void addIptablesRules(){
 		execvp("iptables", args);
 	}
 
-	/*if (fork() == 0) {
+	if (fork() == 0) {
 		char *args[] = {"iptables", "-t", "mangle", "-A", "POSTROUTING", 
 						"-p", "tcp", "--sport", port, 
 						"-j", "NFQUEUE", "--queue-num", "1", NULL};
 		execvp("iptables", args);
-	}*/
+	}
 
 	plen = floor(log10(abs(config.helloPort))) + 1;
 	char hport[plen+1];
@@ -286,7 +305,7 @@ void addIptablesRules(){
 						config.frontEnd, "-j", "NFQUEUE", 
 						"--queue-num", "1", NULL};
 		execvp("iptables", args);
-	}
+	}*/
 
 }
 
