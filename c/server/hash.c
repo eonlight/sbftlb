@@ -1,17 +1,11 @@
-unsigned int sax_hash(const char *key, int size){
-	unsigned int h=0;
-	int i;
-	for(i=0;i<size;i++) h^=(h<<5)+(h>>2)+(unsigned char)*key++;
-	return h;
-}
+#ifndef HASH_C
+#define HASH_C
 
-unsigned int sdbm_hash(const char *key, int size){
-	unsigned int h=0;
-	int i;
-	for(i=0;i<size;i++) h=(unsigned char)*key++ + (h<<6) + (h<<16) - h;
-	return h;
-}
+#include <math.h>
 
+#define MURMURHASH2_DIGEST_LENGTH 4
+
+/* Base Hash Function */
 unsigned int MurmurHash2 (const void * key, int len, unsigned int seed){
 	const unsigned int m = 0x5bd1e995;
 	const int r = 24;
@@ -28,3 +22,5 @@ unsigned int MurmurHash2 (const void * key, int len, unsigned int seed){
 	h ^= h >> 13;h *= m; h ^= h >> 15;
 	return h;
 }
+
+#endif

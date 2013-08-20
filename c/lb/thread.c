@@ -1,101 +1,137 @@
-#include <fcntl.h> /* set non blocking recv */
-#include <errno.h> 
+#include "bloom.c"
 
-#include "thread.h"
+typedef struct {
+	Bloom *bloom;
+	int packets; //num packets on bloom
+	time_t init;
+	int lb; //lb id
+	int server; //server id
+} LBBloom;
 
-// add to the head
-void addListToList(int lb, int server, HttpRequestNode *head, HttpRequestNode *tail){
-	if(state.list[lb][server] == NULL){
-		state.list[lb][server] = head;
-		state.tail[lb][server] = tail;
+int ts = -1, newts = -1;
+
+int isFaulty(int lb){
+	// 100 , 10
+	return susp[lb] >= KILL_TH_SUSP || asusp[lb] >= KILL_TH_ASUSP;
+}
+
+void voteFaulty(int lb){
+	printf("---------------->>> vote LB%d faulty. <<<----------------\n", lb);
+	
+	//TODO: add votes[lb][server] = 1
+	votes[lb][ID] = 1;
+
+	//send faulty fault to every component
+	int rs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	struct sockaddr_in all;
+	all.sin_family = AF_INET;
+	all.sin_addr.s_addr = inet_addr(HELLO_ADDR);
+	all.sin_port = htons(HELLO_PORT);
+		
+	int type = RESET_LB_PROTO;
+	char reset[sizeof(int)*2+1];
+	memcpy(reset, &type, sizeof(int));
+	memcpy(reset+sizeof(int), &lb, sizeof(int));
+	reset[sizeof(int)*2] = '\0';
+		
+	sendto(rs, (const char*) reset, sizeof(int)*2, 0, (struct sockaddr *)&all, sizeof(struct sockaddr_in));
+
+	close(rs);
+	
+}
+
+void addListToList(int lb, int server, HttpRequestNode *h, HttpRequestNode *t){
+	if(list[lb][server] == NULL){
+		list[lb][server] = h;
+		tail[lb][server] = t;
 	}
 	else {
-		tail->next = state.list[lb][server];
-		state.list[lb][server]->prev = tail;
-		state.list[lb][server] = head;
+		t->next = list[lb][server];
+		list[lb][server]->prev = t;
+		list[lb][server] = h;
 	}
 }
 
-void checkFilter(LBBloom * bloom, int now, int bag){
+void checkList(LBBloom * bloom, int now){//, int bag){
 	
 	int lb = bloom->lb;
 	int server = bloom->server;
 
 	// if I saw LBi packets
-	if(state.list[lb][server] != NULL){
+	if(list[lb][server] != NULL){
 		
 		pthread_mutex_lock(&lock);
-		HttpRequestNode *current = state.list[lb][server];
-		state.list[lb][server] = NULL;
-		//int nlist = lcount[lb];
+		HttpRequestNode *current = list[lb][server];
+		list[lb][server] = NULL;
+		tail[lb][server] = NULL;
 		pthread_mutex_unlock(&lock);
 
-		HttpRequestNode *head = NULL;
-		HttpRequestNode *tail = NULL;
+		HttpRequestNode *h = NULL;
+		HttpRequestNode *t = NULL;
 
 		do {
 			if(checkBloom(bloom->bloom, current->buffer, current->len)){
-				if(state.asusp[lb] > 0)
-					state.asusp[lb]--;
+				//printf("in-");
+				if(asusp[lb] > 0)
+					asusp[lb]--;
 
 				bloom->packets--;
+				packets[lb]--;
 				current = removeFromList(current);
-				//lcount[lb]--;
 
 			}
-			else if(current->added+fconfig.TIMEOUT < now){
-				printf(">>>>>>>>>>>>>>>>>> timeout on bag %d, received on %d, lb %d server %d >>>>>>>>>>>>\n", bag, current->bag, lb, server);
-				state.susp[lb]++;
-				state.asusp[lb]++;
+			else if(current->added+TIMEOUT < now){
+				printf(">>>>>>>>>>>>>>>>>> timeout >>>>>>>>>>>>>>>>>>\n");
+				susp[lb]++;
+				asusp[lb]++;
 				// Create structs pointers
-				//struct iphdr *iph = (struct iphdr*) current->buffer;
-				//struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
-				//sendPacket(iph, tcph, (unsigned char *) current->buffer, -1);
+				struct iphdr *iph = (struct iphdr*) current->buffer;
+				struct tcphdr *tcph = (struct tcphdr *) (current->buffer + iph->ihl*4);
+				//TODO: Problem next bag +1 from lb = susp++; asusp++; 
+				sendPacket(iph, tcph, server);
+				packets[lb]--;
 				current = removeFromList(current);
-				//lcount[lb]--;
 			}
 			else {
-				if(head == NULL)
-					head = current;
-				tail = current;
+				//printf("else-");
+				if(h == NULL)
+					h = current;
+				t = current;
 				current = current->next;
 			}
 
 		}while(current != NULL);
 
-		if(head != NULL){
+		if(h != NULL){
 			pthread_mutex_lock(&lock);
-			addListToList(lb, server, head, tail);
+			addListToList(lb, server, h, t);
 			pthread_mutex_unlock(&lock);
 		}
 	}
 
 	if(bloom->packets < 0){
-		printf("problem:  %d\n", bloom->packets);
+		printf("Falso positivo:  %d\n", bloom->packets);
+		wildcard[lb] += bloom->packets;
 	}
 
 	if(bloom->packets > 0){
-		printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
-		state.susp[lb]++;
-		state.asusp[lb]++;
+		bloom->packets += wildcard[lb];
+		if(bloom->packets > 0){
+			printf("<<<<<<<<<< %d a mais de %d >>>>>>>>>>>>\n", bloom->packets, bloom->lb);
+			susp[lb]++;
+			asusp[lb]++;
+		}
+		else
+			wildcard[lb] += bloom->packets;
 	}
 		
 	if(isFaulty(lb))
-		markFaulty(lb);
-
-	if(bloom->bloom != NULL)
-		destroyBloom(bloom->bloom);
-		
-	if(bloom != NULL)
-		free(bloom);
-	bloom = NULL;
-
+		voteFaulty(lb);
 }
 
 LBBloom * readBloom(char *buf) {
 	int ilen = sizeof(int);
-
-	// LB:SERVER_ID:NUM_PACKETS:BLOOM
 	int lb, server, packets;
 
 	memcpy(&lb, buf, ilen);
@@ -104,7 +140,7 @@ LBBloom * readBloom(char *buf) {
 
 	LBBloom *lbb = (LBBloom *) malloc(sizeof(LBBloom));
 
-	if(!(lbb->bloom=createBloom(bconfig.bloomLen, 0.1)))
+	if(!(lbb->bloom=createBloom(BLOOM_LEN, 0.1)))
 		die("cannot create bloom filter");
 
 	int blen = sizeof(char)*lbb->bloom->bytes;
@@ -115,14 +151,14 @@ LBBloom * readBloom(char *buf) {
 
 	memcpy(lbb->bloom->bf, buf+3*ilen, blen);
 
-	//printf("Received %d from %d with %d (%d) packets - %08X\n", lb, server, packets, count[lb], MurmurHash2(lbb->bloom->bf, blen, 0x00));
-	//printf("L0: %d | L1: %d | L2: %d | T: %d\n", count[0], count[1], count[2], counter);
-
 	return lbb;
 }
 
 void * bloomChecker(void *arg){
 
+	int r, now, on = 1;
+
+	printf("bloomChecker: setting up listen socket... \n");
 	if((ts = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		die("thread socket");
 		
@@ -130,18 +166,18 @@ void * bloomChecker(void *arg){
 	memset((char *) &me, 0, sizeof(me));
 	me.sin_family = AF_INET;
 	me.sin_addr.s_addr=htonl(INADDR_ANY);
-	me.sin_port=htons(bconfig.backPort);
+	me.sin_port=htons(BACK_PORT);
 	
 	setsockopt(ts, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	
 	if(bind(ts, (struct sockaddr *) &me, sizeof(me)) < 0){
-		printf("errno: %s\n", strerror(errno));
+		//printf("errno: %s\n", strerror(errno));
 		die("thread bind"); 
 	}
 
-	listen(ts, state.numServers);
+	listen(ts, SERVER_NUM);
 
-	Bloom *bloom=createBloom(bconfig.bloomLen, 0.1);
+	Bloom *bloom=createBloom(BLOOM_LEN, BLOOM_ERROR);
 	int blen = sizeof(int)*3+sizeof(char)*bloom->bytes;
 	destroyBloom(bloom);
 	
@@ -150,28 +186,28 @@ void * bloomChecker(void *arg){
 
 	//bags = (char **) malloc(sizeof(char *)*100);
 	socklen_t slen = sizeof(server);
-	while(end != 1 ){
-
-		/* TODO: change to only 1 socket */
+	printf("bloomChecker: Thread listening... \n");
+	while(1){
 
 		newts = accept(ts, (struct sockaddr *) &server, &slen);
 		if(newts < 0)
 			die("thread accept");
 		
-		int r = 0;
+		r = 0;
 		while(r < blen)
 			r += read(newts, buffer+r, blen);
-		int now = time(0);
-		bags++;
+		now = time(0);
 
 		LBBloom * lbb = readBloom(buffer);
 
-		/* TODO: THREADS!!!!! */
-		/* checkfilter -> function thread */
-		/* new function, locks[num_threads], check_list[num_threads] */
-		//TODO: 1 thread so a fazer isto
-		checkFilter(lbb, now, bags);
-
+		checkList(lbb, now);
+		
+		if(lbb->bloom != NULL)
+			destroyBloom(lbb->bloom);
+		
+		if(lbb != NULL)
+			free(lbb);
+		lbb = NULL;
 		close(newts);
 
 	}
@@ -181,4 +217,19 @@ void * bloomChecker(void *arg){
 	ts = -1;
 
 	return NULL;
+}
+
+void cleanThreads(){
+
+	printf("cleanAlgorithm: cleaning threads...\n");
+	pthread_kill(thread, 2);
+	pthread_join(thread, NULL);
+
+	if(ts != -1)
+		close(ts);
+	ts = -1;
+
+	if(newts != -1)
+		close(newts);
+	newts = -1;
 }
